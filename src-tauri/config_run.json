@@ -1,0 +1,55 @@
+{
+  "inbounds": [
+    {
+      "auto_route": true,
+      "inet4_address": "172.19.0.1/30",
+      "interface_name": "wintun-game",
+      "sniff": true,
+      "stack": "system",
+      "strict_route": true,
+      "tag": "tun-in",
+      "type": "tun"
+    }
+  ],
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "outbounds": [
+    {
+      "down_mbps": 100,
+      "password": "1234",
+      "server": "1.1.1.1",
+      "server_port": 443,
+      "tag": "proxy",
+      "tls": {
+        "enabled": true,
+        "insecure": true
+      },
+      "type": "hysteria2",
+      "up_mbps": 100
+    },
+    {
+      "tag": "direct",
+      "type": "direct"
+    },
+    {
+      "tag": "block",
+      "type": "block"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "proxy",
+    "rules": [
+      {
+        "outbound": "direct",
+        "protocol": "dns"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      }
+    ]
+  }
+}
