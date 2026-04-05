@@ -1,15 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import './App.css';
 
 export default function App() {
   const [status, setStatus] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
-  const [server, setServer] = useState('');
-  const [port, setPort] = useState('443');
-  const [password, setPassword] = useState('');
+  
+  // 核心新增：使用惰性初始化从 localStorage 读取本地保存的数据
+  const [server, setServer] = useState(() => localStorage.getItem('proxy_server') || '');
+  const [port, setPort] = useState(() => localStorage.getItem('proxy_port') || '443');
+  const [password, setPassword] = useState(() => localStorage.getItem('proxy_password') || '');
+  
   const [upMbps, setUpMbps] = useState('100');
   const [downMbps, setDownMbps] = useState('100');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // 核心新增：当 server, port, password 发生变化时，自动保存到 localStorage
+  useEffect(() => {
+    localStorage.setItem('proxy_server', server);
+    localStorage.setItem('proxy_port', port);
+    localStorage.setItem('proxy_password', password);
+  }, [server, port, password]);
 
   const handleToggleConnect = async () => {
     setErrorMsg('');
