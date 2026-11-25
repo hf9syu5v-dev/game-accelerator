@@ -3,7 +3,7 @@
 param()
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$TargetDrive = 'F'
+$TargetDrive = 'E'
 $ExpectedModel = 'LITEON I T LCS-128L9S'
 $ExpectedSerial = '000000123ADC'
 $ExpectedDiskBytes = [int64]128035676160
@@ -16,25 +16,25 @@ $UsbRoot = 'F:\'
 function Stop-Deploy([string]$Message) { throw $Message }
 function Get-Sha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 
-Write-Host '=== B460M SEQUOIA USB CONTENTS DEPLOYMENT ===' -ForegroundColor Cyan
+Write-Host '=== B460M SEQUOIA NO-IGPU EFI DEPLOYMENT ===' -ForegroundColor Cyan
 Write-Host 'CONTENTS ONLY: no disk, partition, format, or drive-letter operations.'
 
-$logical = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='F:'"
-if (!$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA') { Stop-Deploy 'SAFETY_STOP: F: must be FAT32 with volume label OC-SEQUOIA.' }
-$part = Get-Partition -DriveLetter F -ErrorAction Stop
-if (([string]$part.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid) { Stop-Deploy "SAFETY_STOP: F: is not a GPT EFI System Partition. GPT type=$($part.GptType)" }
+$logical = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='E:'"
+if (!$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA') { Stop-Deploy 'SAFETY_STOP: E: must be FAT32 with volume label OC-SEQUOIA.' }
+$part = Get-Partition -DriveLetter E -ErrorAction Stop
+if (([string]$part.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid) { Stop-Deploy "SAFETY_STOP: E: is not a GPT EFI System Partition. GPT type=$($part.GptType)" }
 $disk = Get-Disk -Number $part.DiskNumber -ErrorAction Stop
 if ($disk.FriendlyName -ne $ExpectedModel -or $disk.SerialNumber.Trim() -ne $ExpectedSerial -or $disk.BusType -ne 'USB' -or [math]::Abs([double]$disk.Size - [double]$ExpectedDiskBytes) -gt 2MB -or $disk.IsBoot -or $disk.IsSystem -or $disk.PartitionStyle -ne 'GPT') {
-    Stop-Deploy 'SAFETY_STOP: F: is not the expected LITEON USB disk. No files copied.'
+    Stop-Deploy 'SAFETY_STOP: E: is not the expected LITEON USB disk. No files copied.'
 }
-Write-Host ("TARGET VERIFIED: Disk {0}; {1}; Serial {2}; F: FAT32 ESP." -f $disk.Number,$disk.FriendlyName,$disk.SerialNumber) -ForegroundColor Green
+Write-Host ("TARGET VERIFIED: Disk {0}; {1}; Serial {2}; E: FAT32 ESP." -f $disk.Number,$disk.FriendlyName,$disk.SerialNumber) -ForegroundColor Green
 
 foreach ($n in @('EFI','com.apple.recovery.boot','USB-BUILD-REPORT.txt')) {
     if (Test-Path -LiteralPath (Join-Path $UsbRoot $n)) { Stop-Deploy "SAFETY_STOP: F:\$n already exists. Nothing overwritten." }
 }
 $downloads = Join-Path $env:USERPROFILE 'Downloads'
-$zipCandidates = @(Get-ChildItem -LiteralPath $downloads -Filter '*.zip' -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)NO.?SS04|DIAGNOSTIC|15023812255' } | Sort-Object LastWriteTime -Descending)
-if (!$zipCandidates.Count) { Stop-Deploy 'ARTIFACT_ZIP_NOT_FOUND: downloaded NO-SS04 diagnostic artifact ZIP must be in Downloads.' }
+$zipCandidates = @(Get-ChildItem -LiteralPath $downloads -Filter '*.zip' -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)NO.?IGPU|15043941995' } | Sort-Object LastWriteTime -Descending)
+if (!$zipCandidates.Count) { Stop-Deploy 'ARTIFACT_ZIP_NOT_FOUND: downloaded NO-IGPU diagnostic artifact ZIP must be in Downloads.' }
 
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 try {
@@ -56,12 +56,15 @@ try {
         }
         if ($sourceEfi) { break }
     }
-    if (!$sourceEfi) { Stop-Deploy 'EFI_SOURCE_NOT_FOUND in downloaded diagnostic ZIPs.' }
+    if (!$sourceEfi) { Stop-Deploy 'EFI_SOURCE_NOT_FOUND in downloaded NO-IGPU diagnostic ZIP.' }
     foreach ($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Drivers\OpenRuntime.efi','OC\Drivers\HfsPlus.efi','OC\Kexts\UTBMap.kext\Contents\Info.plist')) {
         if (!(Test-Path -LiteralPath (Join-Path $sourceEfi $rel) -PathType Leaf)) { Stop-Deploy "EFI_REQUIRED_FILE_MISSING: $rel" }
     }
     $utb = Get-Content -LiteralPath (Join-Path $sourceEfi 'OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
     if ($utb -match 'HS04|SS04') { Stop-Deploy 'UTBMAP_CHECK_FAILED: HS04 or SS04 found.' }
+    $configText = Get-Content -LiteralPath (Join-Path $sourceEfi 'OC\\config.plist') -Raw
+    if ($configText -notmatch '-wegnoigpu' -or $configText -match '-wegnoegpu') { Stop-Deploy 'BOOT_ARGS_CHECK_FAILED: expected -wegnoigpu and must not contain -wegnoegpu.' }
+    if ($configText -notmatch 'iMac20,1') { Stop-Deploy 'SMBIOS_CHECK_FAILED: expected iMac20,1.' }
     $efiFiles = @(Get-ChildItem -LiteralPath $sourceEfi -File -Recurse)
     if ($efiFiles.Count -lt 20) { Stop-Deploy 'EFI_FILE_COUNT_SUSPICIOUS' }
     Write-Host "EFI_SOURCE_OK: $($efiFiles.Count) files; HS04/SS04 absent." -ForegroundColor Green
@@ -144,7 +147,7 @@ m.verify_image(sys.argv[2], sys.argv[3])
     }
     foreach ($n in @('BaseSystem.dmg','BaseSystem.chunklist')) { if ((Get-Sha256 (Join-Path $RecoveryCache $n)) -ne (Get-Sha256 (Join-Path $destRecovery $n))) { Stop-Deploy "RECOVERY_COPY_SHA256_MISMATCH: $n" } }
 
-    @('B460M Sequoia USB contents deployment',"TARGET_DRIVE=F:","DISK_MODEL=$($disk.FriendlyName)","DISK_SERIAL=$($disk.SerialNumber)",'PARTITION_STYLE=GPT','PARTITION_TYPE=EFI_SYSTEM_PARTITION','FILESYSTEM=FAT32','VOLUME_LABEL=OC-SEQUOIA',"EFI_FILES_SHA256_VERIFIED=$($efiFiles.Count)",'UTBMAP_HS04_SS04=ABSENT','APPLE_CHUNKLIST_VERIFICATION=PASS','COPY_SHA256_VERIFICATION=PASS','DISK_PARTITION_FORMAT_OPERATIONS=NONE','INTERNAL_DISKS=NOT_MODIFIED') | Set-Content -LiteralPath (Join-Path $UsbRoot 'USB-BUILD-REPORT.txt') -Encoding ASCII
+    @('B460M Sequoia iGPU-isolation USB contents deployment',"TARGET_DRIVE=F:","DISK_MODEL=$($disk.FriendlyName)","DISK_SERIAL=$($disk.SerialNumber)",'PARTITION_STYLE=GPT','PARTITION_TYPE=EFI_SYSTEM_PARTITION','FILESYSTEM=FAT32','VOLUME_LABEL=OC-SEQUOIA',"EFI_FILES_SHA256_VERIFIED=$($efiFiles.Count)",'UTBMAP_HS04_SS04=ABSENT','BOOT_ARGS_WEGNOIGPU=PRESENT','BOOT_ARGS_WEGNOEGPU=ABSENT','APPLE_CHUNKLIST_VERIFICATION=PASS','COPY_SHA256_VERIFICATION=PASS','DISK_PARTITION_FORMAT_OPERATIONS=NONE','INTERNAL_DISKS=NOT_MODIFIED') | Set-Content -LiteralPath (Join-Path $UsbRoot 'USB-BUILD-REPORT.txt') -Encoding ASCII
     Write-Host ''
     Write-Host 'SEQUOIA_USB_CONTENTS_DEPLOYMENT_SUCCESS' -ForegroundColor Green
     Write-Host 'USB_ROOT=F:\'
@@ -152,6 +155,6 @@ m.verify_image(sys.argv[2], sys.argv[3])
     Write-Host 'APPLE_CHUNKLIST_VERIFICATION=PASS'
     Write-Host 'COPY_SHA256_VERIFICATION=PASS'
     Write-Host 'DISK_PARTITION_FORMAT_OPERATIONS=NONE'
-    Write-Host 'Next: safely eject USB and test OpenCore picker.'
+    Write-Host 'Next: safely eject USB and test OpenCore picker with the RX 570 display output.'
 }
 finally { if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue } }
