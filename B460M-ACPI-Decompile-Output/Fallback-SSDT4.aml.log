@@ -1,0 +1,21 @@
+﻿ExitCode: 0
+--- STDOUT ---
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+Disassembly completed
+ASL Output:    SSDT4.dsl - 248010 bytes
+
+--- STDERR ---
+File appears to be binary: found 4877 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT4.aml, Length 0x38B4 (14516) bytes
+ACPI: SSDT 0x0000000000000000 0038B4 (v02 INTEL  xh_cmvd4 00000000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+

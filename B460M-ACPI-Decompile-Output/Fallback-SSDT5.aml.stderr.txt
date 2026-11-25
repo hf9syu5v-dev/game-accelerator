@@ -1,0 +1,9 @@
+File appears to be binary: found 1480 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed

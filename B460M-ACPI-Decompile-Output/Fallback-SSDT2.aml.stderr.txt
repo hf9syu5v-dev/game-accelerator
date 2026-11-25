@@ -1,0 +1,9 @@
+File appears to be binary: found 2965 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT2.aml, Length 0x2703 (9987) bytes
+ACPI: SSDT 0x0000000000000000 002703 (v02 Intel  PegSsdt  00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed

@@ -1,0 +1,129 @@
+﻿ExitCode: -1
+--- STDOUT ---
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+External object resolution file        SSDT5.aml
+External object resolution file        SSDT4.aml
+External object resolution file        SSDT3.aml
+External object resolution file        SSDT2.aml
+External object resolution file        SSDT1.aml
+External object resolution file         SSDT.aml
+Disassembly completed
+ASL Output:    DSDT.dsl - 3929002 bytes
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT4.aml
+Firmware Error (ACPI): Failure creating named object [NHSP], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+
+--- STDERR ---
+File appears to be binary: found 84357 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file DSDT.aml, Length 0x39158 (233816) bytes
+ACPI: DSDT 0x0000000000000000 039158 (v02 ALASKA A M I    01072009 INTL 20160527)
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Input file SSDT4.aml, Length 0x38B4 (14516) bytes
+ACPI: SSDT 0x0000000000000000 0038B4 (v02 INTEL  xh_cmvd4 00000000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Input file SSDT3.aml, Length 0x147B (5243) bytes
+ACPI: SSDT 0x0000000000000000 00147B (v02 ALASKA Ther_Rvp 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Input file SSDT2.aml, Length 0x2703 (9987) bytes
+ACPI: SSDT 0x0000000000000000 002703 (v02 Intel  PegSsdt  00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Input file SSDT1.aml, Length 0x30AD (12461) bytes
+ACPI: SSDT 0x0000000000000000 0030AD (v02 SaSsdt SaSsdt   00003000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Input file SSDT.aml, Length 0x20AD (8365) bytes
+ACPI: SSDT 0x0000000000000000 0020AD (v02 CpuRef CpuSsdt  00003000 INTL 20160527)
+Pass 1 parse of [SSDT]
+Pass 2 parse of [SSDT]
+Pass 1 parse of [DSDT]
+Pass 2 parse of [DSDT]
+Parsing Deferred Opcodes (Methods/Buffers/Packages/Regions)
+
+Parsing completed
+ Warning - Emitting ASL code "External (ESPC)"
+           This is a conflicting declaration with some other declaration within the ASL code.
+           This external declaration may need to be deleted in order to recompile the dsl file.
+
+ Warning - Emitting ASL code "External (PSON)"
+           This is a conflicting declaration with some other declaration within the ASL code.
+           This external declaration may need to be deleted in order to recompile the dsl file.
+
+ Warning - Emitting ASL code "External (SCRO)"
+           This is a conflicting declaration with some other declaration within the ASL code.
+           This external declaration may need to be deleted in order to recompile the dsl file.
+
+File appears to be binary: found 1859 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT.aml, Length 0x20AD (8365) bytes
+ACPI: SSDT 0x0000000000000000 0020AD (v02 CpuRef CpuSsdt  00003000 INTL 20160527)
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+ACPI Error: AE_ALREADY_EXISTS, During name lookup/catalog (20260408/psobject-372)
+File appears to be binary: found 4126 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT1.aml, Length 0x30AD (12461) bytes
+ACPI: SSDT 0x0000000000000000 0030AD (v02 SaSsdt SaSsdt   00003000 INTL 20160527)
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+ACPI Error: AE_ALREADY_EXISTS, During name lookup/catalog (20260408/psobject-372)
+File appears to be binary: found 2965 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT2.aml, Length 0x2703 (9987) bytes
+ACPI: SSDT 0x0000000000000000 002703 (v02 Intel  PegSsdt  00001000 INTL 20160527)
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+ACPI Error: AE_ALREADY_EXISTS, During name lookup/catalog (20260408/psobject-372)
+File appears to be binary: found 811 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT3.aml, Length 0x147B (5243) bytes
+ACPI: SSDT 0x0000000000000000 00147B (v02 ALASKA Ther_Rvp 00001000 INTL 20160527)
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+ACPI Error: AE_ALREADY_EXISTS, During name lookup/catalog (20260408/psobject-372)
+File appears to be binary: found 4877 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT4.aml, Length 0x38B4 (14516) bytes
+ACPI: SSDT 0x0000000000000000 0038B4 (v02 INTEL  xh_cmvd4 00000000 INTL 20160527)
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Pass 1 parse of [SSDT]
+ACPI Error: AE_ALREADY_EXISTS, During name lookup/catalog (20260408/psobject-372)
+File appears to be binary: found 1480 non-ASCII characters, disassembling
+Binary file appears to be a valid ACPI table, disassembling
+Input file SSDT5.aml, Length 0x2720 (10016) bytes
+ACPI: SSDT 0x0000000000000000 002720 (v02 ALASKA PtidDevc 00001000 INTL 20160527)
+Input file SSDT4.aml, Length 0x38B4 (14516) bytes
+ACPI: SSDT 0x0000000000000000 0038B4 (v02 INTEL  xh_cmvd4 00000000 INTL 20160527)
+Pass 1 parse of [SSDT]
+ACPI Error: AE_ALREADY_EXISTS, During name lookup/catalog (20260408/psobject-372)
+

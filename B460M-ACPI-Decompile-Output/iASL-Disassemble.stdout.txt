@@ -1,0 +1,31 @@
+
+Intel ACPI Component Architecture
+ASL+ Optimizing Compiler/Disassembler version 20260408
+Copyright (c) 2000 - 2026 Intel Corporation
+
+External object resolution file        SSDT5.aml
+External object resolution file        SSDT4.aml
+External object resolution file        SSDT3.aml
+External object resolution file        SSDT2.aml
+External object resolution file        SSDT1.aml
+External object resolution file         SSDT.aml
+Disassembly completed
+ASL Output:    DSDT.dsl - 3929002 bytes
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT5.aml
+Firmware Error (ACPI): Failure creating named object [\_SB.PTID], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
+External object resolution file        SSDT4.aml
+Firmware Error (ACPI): Failure creating named object [NHSP], AE_ALREADY_EXISTS (20260408/dswload-495)
+Could not parse external ACPI tables, AE_ALREADY_EXISTS
