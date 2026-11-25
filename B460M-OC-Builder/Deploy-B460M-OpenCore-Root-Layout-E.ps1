@@ -54,7 +54,7 @@ try {
     Write-Host "SOURCE_EFI_LAYOUT_OK"
     Write-Host "Creating E:\EFI and copying files..."
     New-Item -ItemType Directory -Path $target | Out-Null
-    Copy-Item -LiteralPath (Join-Path $source "*") -Destination $target -Recurse -Force
+    Get-ChildItem -LiteralPath $source | Copy-Item -Destination $target -Recurse -Force
 
     $sourceFiles = @(Get-ChildItem -LiteralPath $source -File -Recurse)
     $verified = 0
