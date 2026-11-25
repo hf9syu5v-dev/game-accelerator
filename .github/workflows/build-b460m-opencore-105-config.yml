@@ -1,4 +1,4 @@
-name: Build OpenCore 1.0.5 Sequoia configuration stage (iMac20,1 test verified)
+name: Build OpenCore 1.0.5 Sequoia configuration stage (direct EFI artifact)
 
 on:
   push:
