@@ -53,10 +53,18 @@ try {
  $mr=@(Get-ChildItem $ocdir -Filter macrecovery.py -File -Recurse);if($mr.Count -ne 1){Fail 'macrecovery.py not uniquely found.'}
  Write-Host 'STEP 4/5: Download Sequoia Recovery from Apple and verify chunklist...'
  $rec=Join-Path $Work 'com.apple.recovery.boot';New-Item -ItemType Directory $rec -Force|Out-Null
- Push-Location $mr[0].DirectoryName
- try{& $pyexe @pyargs $mr[0].FullName -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 -o $rec download;if($LASTEXITCODE -ne 0){Fail "macrecovery exit=$LASTEXITCODE"}}finally{Pop-Location}
  $dmg=Join-Path $rec 'BaseSystem.dmg';$chunk=Join-Path $rec 'BaseSystem.chunklist'
- if(!(Test-Path $dmg -PathType Leaf) -or !(Test-Path $chunk -PathType Leaf)){Fail 'Apple Recovery files missing.'}
+ $downloadOK=$false
+ for($attempt=1;$attempt -le 6;$attempt++){
+  Write-Host "Apple Recovery download attempt $attempt/6..."
+  Remove-Item -LiteralPath $dmg,$chunk -Force -ErrorAction SilentlyContinue
+  Push-Location $mr[0].DirectoryName
+  try{& $pyexe @pyargs $mr[0].FullName -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 -o $rec download;$rc=$LASTEXITCODE}finally{Pop-Location}
+  if($rc -eq 0 -and (Test-Path $dmg -PathType Leaf) -and (Test-Path $chunk -PathType Leaf) -and (Get-Item $dmg).Length -ge 100MB -and (Get-Item $chunk).Length -ge 1KB){$downloadOK=$true;break}
+  Write-Warning "Apple download attempt $attempt failed (exit=$rc). Partial files will be discarded."
+  if($attempt -lt 6){Start-Sleep -Seconds ([math]::Min(30,5*$attempt))}
+ }
+ if(!$downloadOK){Fail 'Apple Recovery download failed after 6 attempts. USB unchanged.'}
  if((Get-Item $dmg).Length -lt 100MB -or (Get-Item $chunk).Length -lt 1KB){Fail 'Apple Recovery size check failed.'}
  Write-Host "APPLE_RECOVERY_DOWNLOAD_AND_CHUNKLIST_VERIFICATION_OK; DMG_BYTES=$((Get-Item $dmg).Length)" -ForegroundColor Green
 
