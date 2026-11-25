@@ -199,13 +199,13 @@ jobs:
             "SystemSerialNumber":"LOCAL0000000",
             "MLB":"LOCAL000000000000",
             "SystemUUID":"00000000-0000-0000-0000-000000000000",
-            "ROM":bytes.fromhex("000000000000"),
-            "UpdateDataHub":True,
-            "UpdateNVRAM":True,
-            "UpdateSMBIOS":True,
-            "UpdateSMBIOSMode":"Create"
+            "ROM":bytes.fromhex("000000000000")
           }.items(): g[key]=value
           c["PlatformInfo"]["Automatic"]=True
+          c["PlatformInfo"]["UpdateDataHub"]=True
+          c["PlatformInfo"]["UpdateNVRAM"]=True
+          c["PlatformInfo"]["UpdateSMBIOS"]=True
+          c["PlatformInfo"]["UpdateSMBIOSMode"]="Create"
 
           # UEFI: only the two Dortania-recommended drivers; preserve Sample.plist defaults elsewhere.
           c["UEFI"]["ConnectDrivers"]=True
