@@ -112,14 +112,14 @@ ALC S1200A is the identified codec. Use alcid=3 as the first test candidate beca
 1. Direct CFG Lock state is still desirable but is no longer a blocker: use the provisional AppleXcpmCfgLock workaround for a first-boot candidate, then verify from DEBUG log.
 2. Direct CPUID read is still desirable as a final confirmation, but Intel's datasheet already maps the reported Comet Lake-S G0 stepping to 0x000A0650; do not spoof this value by default.
 3. iGPU PCI Hardware Id is confirmed: `PCI\\VEN_8086&DEV_9BC8&SUBSYS_86941043&REV_00`; no device-id spoofing planned.
-4. User approved iMac20,1 SMBIOS. Awaiting the user's locally generated unique values (SystemSerialNumber, MLB, ROM, SystemUUID). Helper script: `B460M-OC-Builder/Generate-B460M-SMBIOS-Values.ps1`. It collects Serial/Board Serial/SmUUID from one GenSMBIOS generation and derives ROM from the Intel I219-V MAC. The output is local-only and must not be committed to GitHub.
+4. User approved iMac20,1 SMBIOS. A generated identifier set was accidentally committed to the public repository root and subsequently deleted from the current branch. Treat that entire set as compromised: do not reuse it. The old contents may remain retrievable from Git history until history is rewritten. Generate a fresh set locally on the target B460M PC; derive ROM from that board's Intel I219-V MAC. Never commit the local output. `.gitignore` now excludes `B460M-SMBIOS-Values-LOCAL.txt`.
 
 ## 5. Safety gates before any boot attempt
 
 - Generate a config from the exact OpenCore 1.0.8 Sample.plist and this hardware profile.
 - Run the matching OpenCore 1.0.8 ocvalidate against config.plist.
 - Verify every ACPI, kext, driver and tool path exists and is referenced exactly once.
-- Verify no placeholder/example SMBIOS identifiers remain. User-approved iMac20,1 identifiers must be supplied locally; never commit the generated identifier file or expose it in repository history.
+- Verify no placeholder/example SMBIOS identifiers remain. Use only a newly generated, uncompromised iMac20,1 set supplied locally; never commit the generated identifier file. The previous set was exposed in a public commit and must not be reused.
 - Keep the Windows WD SN720 untouched; before any disk operation, positively identify the HP EX900 Plus by model and capacity.
 - Do not describe the EFI as bootable until validation and real-hardware testing are complete.
 
