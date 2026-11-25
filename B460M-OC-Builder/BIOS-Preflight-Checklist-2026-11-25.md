@@ -13,7 +13,7 @@ Purpose: read-only preflight before any first-boot attempt with the staging EFI.
 |---|---|---|
 | BIOS version | 1601 | Confirmed |
 | VT-d | Disabled | Confirmed |
-| Intel (VMX) Virtualization Technology / VT-x | Disabled | Confirmed by user; enable is recommended for the planned macOS setup |
+| Intel (VMX) Virtualization Technology / VT-x | Enabled | User confirmed changing it from Disabled to Enabled |
 | Execute Disable Bit / XD | Not found in BIOS CPU Configuration | User inspected; record as unavailable/not found, not as enabled |
 | Above 4G Decoding | Enabled | Confirmed |
 | Primary Display | Auto | Confirmed |
@@ -25,15 +25,15 @@ Purpose: read-only preflight before any first-boot attempt with the staging EFI.
 | XHCI Hand-off | Enabled | Confirmed |
 | CSM / Launch CSM | Disabled | Confirmed from BIOS screenshot |
 | Fast Boot | Disabled | User confirmed changed from Enabled to Disabled |
-| Secure Boot → OS Type | Other OS; Secure Boot state field displays `User` | OS Type confirmed. `User` alone does not prove Secure Boot enforcement is disabled; actual enforcement state remains unverified |
+| Secure Boot → OS Type | Other OS; Secure Boot state field displays `User`; PK/KEK/DB/DBX default keys are installed | ASUS `Other OS` setting is the intended disabled-Secure-Boot configuration; `User` denotes key-management mode, not proof of enforcement. Leave keys and mode untouched |
 
 ## Read-only checks still needed before a hardware boot
 
 | BIOS item | Dortania Comet Lake recommendation | Current evidence |
 |---|---|---|
-| Secure Boot | Disabled | OS Type is `Other OS`; status field says `User`. Actual enforcement state remains unverified |
-| VT-x | Enabled | Currently Disabled; user should enable it |
-| SATA Controller Mode | AHCI | Not yet confirmed; **do not change until Windows storage configuration is understood** |
+| Secure Boot | Disabled | ASUS OS Type is `Other OS`; default PK/KEK/DB/DBX keys remain installed. Do not clear keys or change Secure Boot mode |
+| VT-x | Enabled | Confirmed enabled by user |
+| SATA Controller Mode | AHCI | Confirmed by user; leave unchanged |
 | Serial/COM and Parallel ports | Disabled if present | Not yet confirmed |
 | Intel SGX / Intel Platform Trust | Disabled if present | Not yet confirmed |
 | Thunderbolt | Disabled for initial install if present | Not yet confirmed |
