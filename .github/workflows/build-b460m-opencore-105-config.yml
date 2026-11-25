@@ -93,6 +93,10 @@ jobs:
           cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-AWAC.aml staging/EFI/OC/ACPI/
           brew install acpica
           for aml in staging/EFI/OC/ACPI/*.aml; do iasl -d "$aml"; done
+          # Keep disassembly outputs out of the deployable EFI tree.
+          rm -f staging/EFI/OC/ACPI/*.dsl
+          test "$(find staging/EFI/OC/ACPI -maxdepth 1 -name '*.aml' | wc -l | tr -d ' ')" = "3"
+          test -z "$(find staging/EFI/OC/ACPI -maxdepth 1 -name '*.dsl' -print)"
 
       - name: Configure Comet Lake sections from Dortania guide
         shell: bash
