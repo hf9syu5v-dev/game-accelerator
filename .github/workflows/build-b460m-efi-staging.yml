@@ -267,7 +267,7 @@ jobs:
             echo "The supplied UTBMap is staged but physical port-by-port behavior still requires validation. No installer, disk image, or physical EFI write is included."
             echo
             echo "## SHA-256"
-            shasum -a 256 build/EFI/BOOT/BOOTx64.efi build/EFI/OC/OpenCore.efi build/EFI/OC/Drivers/*.efi build/EFI/OC/ACPI/*.aml
+            find build/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
           } > build/BUILD-MANIFEST.md
           cat > build/DO-NOT-BOOT.txt <<'EOF'
           This is an incomplete staging EFI, not a bootable OpenCore configuration.
