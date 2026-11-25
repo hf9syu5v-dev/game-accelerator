@@ -219,6 +219,11 @@ jobs:
           assert c["Misc"]["Security"]["BlacklistAppleUpdate"] is True
           assert c["Misc"]["Boot"]["ShowPicker"] is True
           assert c["Misc"]["Boot"]["Timeout"] == 0
+          assert c["Misc"]["Security"]["ScanPolicy"] == 0x200703
+          assert c["Misc"]["Debug"]["AppleDebug"] is True
+          assert c["Misc"]["Debug"]["ApplePanic"] is True
+          assert c["Misc"]["Debug"]["DisableWatchDog"] is True
+          assert c["Misc"]["Debug"]["DisplayLevel"] == 2147483714
           assert c["PlatformInfo"]["Generic"]["SystemSerialNumber"] == "C02J5NYBPN5T"
           assert c["PlatformInfo"]["Generic"]["MLB"] == "C02231609GUPHC1JC"
           assert c["PlatformInfo"]["Generic"]["SystemUUID"] == "78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"
@@ -274,12 +279,13 @@ jobs:
             echo "- ACPI: PLUG, EC-USBX, AWAC; USBToolBox handles RHUB removal"
             echo "- Drivers: OpenRuntime.efi and HfsPlus.efi"
             echo "- Config: hardware-specific config.plist candidate generated and checked with matching ocvalidate"
-            echo "- Status: COMPLETE EFI BOOT-TEST CANDIDATE; NOT HARDWARE-VERIFIED"
+            echo "- Status: COMPLETE EFI USB-ONLY BOOT-TEST CANDIDATE; NOT HARDWARE-VERIFIED"
             echo
             echo "The config.plist includes the user's requested TEMPORARY TEST SMBIOS identity for initial bring-up only. Replace it locally with a fresh matching GenSMBIOS set after testing."
             echo "This package contains a complete EFI folder intended for a removable-USB OpenCore picker/boot test. It does not contain a macOS installer."
             echo "The supplied UTBMap is structurally verified but physical port correspondence, macOS boot, and device functionality remain unverified."
-            echo "Do not select an internal-disk installer or perform installation/partition/format operations. No internal disk is modified by this build."
+            echo "Picker ScanPolicy is restricted to USB devices and APFS/HFS/EFI file systems for this first test; internal SATA/NVMe boot entries are intentionally filtered. This is a guardrail, not an absolute security boundary because firmware device classification can vary."
+            echo "Do not select an installer or perform installation/partition/format operations. No internal disk is modified by this build."
             echo
             echo "## SHA-256"
             find build/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
