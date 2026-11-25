@@ -37,6 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           brew tap FiloSottile/homebrew-musl-cross
+          brew trust FiloSottile/musl-cross
           brew install musl-cross openssl mingw-w64
 
       - name: Enable keyboard scan diagnostics in OpenCore source
