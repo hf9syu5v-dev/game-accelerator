@@ -153,6 +153,7 @@ jobs:
           with p.open("rb") as f:
               c = plistlib.load(f)
           assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          assert c["Misc"]["Security"]["BlacklistAppleUpdate"] is True
           assert c["PlatformInfo"]["Generic"]["SystemSerialNumber"] == "C02J5NYBPN5T"
           assert c["PlatformInfo"]["Generic"]["MLB"] == "C02231609GUPHC1JC"
           assert c["PlatformInfo"]["Generic"]["SystemUUID"] == "78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"
