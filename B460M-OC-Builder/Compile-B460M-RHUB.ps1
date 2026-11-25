@@ -8,7 +8,7 @@ $DslPath = Join-Path $PSScriptRoot "EFI\EFI\OC\ACPI\SSDT-RHUB-B460M-PLUS.dsl"
 $OutputPath = Join-Path $PSScriptRoot "EFI\EFI\OC\ACPI\SSDT-RHUB-B460M-PLUS.aml"
 
 if (-not (Test-Path -LiteralPath $DslPath)) {
-    throw "找不到 DSL 文件：$DslPath"
+    throw "DSL file not found: $DslPath"
 }
 
 if ([string]::IsNullOrWhiteSpace($IaslPath)) {
@@ -32,17 +32,16 @@ if ([string]::IsNullOrWhiteSpace($IaslPath)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($IaslPath) -or -not (Test-Path -LiteralPath $IaslPath)) {
-    Write-Host "没有找到 iasl.exe。"
-    Write-Host "请安装/解压 ACPICA iASL Windows 工具，然后重新运行。"
-    Write-Host "官方说明：https://open-acpica.github.io/acpica_download.html"
-    Write-Host "注意：ACPICA 自 2026-09-30 起不再发布新的 Windows 二进制包；旧版 Windows 工具仍可从历史发行版获取。"
+    Write-Host "iasl.exe was not found."
+    Write-Host "Install or extract the ACPICA iASL Windows tool, then run this script again."
+    Write-Host "Official information: https://open-acpica.github.io/acpica_download.html"
     exit 2
 }
 
-Write-Host "使用 iASL：$IaslPath"
+Write-Host "Using iASL: $IaslPath"
 & $IaslPath -v
 if ($LASTEXITCODE -ne 0) {
-    throw "无法读取 iasl 版本信息。"
+    throw "Unable to read the iASL version."
 }
 
 $workDir = Split-Path -Parent $DslPath
@@ -54,25 +53,25 @@ try {
 
     & $IaslPath -tc $DslPath
     if ($LASTEXITCODE -ne 0) {
-        throw "iASL 编译失败，退出代码：$LASTEXITCODE"
+        throw "iASL compilation failed with exit code $LASTEXITCODE"
     }
 
     if (-not (Test-Path -LiteralPath $OutputPath)) {
-        throw "iASL 未生成预期 AML：$OutputPath"
+        throw "iASL did not create the expected AML file: $OutputPath"
     }
 
     $bytes = [System.IO.File]::ReadAllBytes($OutputPath)
     if ($bytes.Length -lt 36 -or [System.Text.Encoding]::ASCII.GetString($bytes, 0, 4) -ne "SSDT") {
-        throw "输出文件不是有效的 SSDT AML 表头。"
+        throw "The output does not have a valid SSDT AML header."
     }
 
     $hash = (Get-FileHash -LiteralPath $OutputPath -Algorithm SHA256).Hash
     Write-Host ""
-    Write-Host "编译成功。"
-    Write-Host "AML：$OutputPath"
-    Write-Host "大小：$($bytes.Length) bytes"
-    Write-Host "SHA256：$hash"
-    Write-Host "此脚本只生成 AML，不会修改 config.plist 或其他 EFI 文件。"
+    Write-Host "Compilation successful."
+    Write-Host "AML: $OutputPath"
+    Write-Host "Size: $($bytes.Length) bytes"
+    Write-Host "SHA256: $hash"
+    Write-Host "This script only creates the AML file. It does not modify config.plist or other EFI files."
 }
 finally {
     Pop-Location
