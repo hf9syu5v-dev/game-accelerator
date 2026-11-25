@@ -45,7 +45,7 @@ try{
    $used=@(Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue|ForEach-Object{([string]$_.DeviceID).TrimEnd(':')})
    foreach($candidate in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $candidate){$resumeLetter=$candidate;break}}
    if([string]::IsNullOrWhiteSpace($resumeLetter)){Fail 'No free drive letter available to resume the existing USB partition.'}
-   Add-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $resumePartitionNumber -AccessPath ($resumeLetter+':\\') -ErrorAction Stop
+   Add-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $resumePartitionNumber -AccessPath ($resumeLetter+':\') -ErrorAction Stop
    if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
    Start-Sleep -Seconds 3
   }
