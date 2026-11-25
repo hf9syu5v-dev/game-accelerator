@@ -66,8 +66,8 @@ For Run 45572403055:
 
 ## 8. Remaining gates before a bootable EFI can be approved
 
-1. Read-only BIOS preflight: confirm Secure Boot, CSM, Fast Boot, VT-x, Hyper-Threading, XD, XHCI Hand-off and other applicable options. Do not change SATA/RST/AHCI mode until Windows storage compatibility is understood.
-2. Directly confirm ES CPU CPUID and actual active logical processor count from Windows/hardware diagnostics.
+1. BIOS preflight update (2026-11-25): CSM Disabled, Fast Boot Disabled, VT-x Enabled, SATA Mode AHCI, VT-d Disabled, Above 4G Enabled, Hyper-Threading Enabled and XHCI Hand-off Enabled are user-confirmed. Secure Boot is configured as `Other OS` with default PK/KEK/DB/DBX keys installed; leave key management untouched. Execute Disable Bit/XD was not found in the inspected CPU Configuration page. Remaining BIOS items are optional Serial/Parallel, SGX/PTT, Thunderbolt and Re-Size BAR checks if those options exist.
+2. Directly confirm ES CPU CPUID and actual active logical processor count from Windows/hardware diagnostics; CPU-Z's displayed family/model/revision does not substitute for a raw CPUID capture.
 3. Verify that the supplied UTBMap was generated for this exact motherboard/controller and physically test all mapped USB ports.
 4. First boot test with a separate removable USB EFI only; do not write the internal EFI partition.
 5. Validate RX 570 acceleration, UHD 630 compute functions, Ethernet, NVMe, audio and sleep/wake.
@@ -86,4 +86,4 @@ This is a configuration compatibility review, not a hardware boot test. The arti
 
 ## 9. Artifact freshness note
 
-The latest inspected ZIP is Run 45572403055 (artifact 15003605173). Its config was independently parsed from the downloaded artifact. The generator change above was committed after that build; until a new Actions run is completed and its artifact is audited, use the old ZIP only as an audit reference and do not distribute it as the latest candidate.
+Superseded by the independently inspected Run 45577287640 artifact (ID 15005391442), built from commit `cf11befc0f88ffa6b5b32669db3bfb34731c33f8`. That artifact includes `BlacklistAppleUpdate=True` and passed ZIP integrity, config parsing, kext/ACPI/driver presence checks and the workflow's matching `ocvalidate` step. It remains staging-only and is not approved to boot.
