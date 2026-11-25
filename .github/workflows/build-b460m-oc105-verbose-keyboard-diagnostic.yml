@@ -2,6 +2,11 @@ name: Build OpenCore 1.0.5 verbose keyboard diagnostic
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - .github/workflows/build-b460m-oc105-verbose-keyboard-diagnostic.yml
 
 permissions:
   contents: read
