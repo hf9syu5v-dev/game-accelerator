@@ -58,7 +58,7 @@ try {
     $used = @(Get-Volume | Where-Object { $_.DriveLetter } | ForEach-Object { [string]$_.DriveLetter })
     foreach ($candidate in @("Z","Y","X","W","V","U","T","S","R")) { if ($used -notcontains $candidate) { $Drive = $candidate; break } }
     if (-not $Drive) { throw "No free drive letter available for temporary ESP access." }
-    Add-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber 2 -AccessPath "$($Drive):\\"
+    Add-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber 2 -AccessPath "$($Drive):\"
     $Mounted = $true
     $TargetRoot = "$($Drive):\"
     if (-not (Test-Path $TargetRoot)) { throw "Temporary ESP mount failed." }
@@ -104,7 +104,7 @@ catch {
 }
 finally {
     if ($Mounted -and $Partition -and $Drive) {
-        try { Remove-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber 2 -AccessPath "$($Drive):\\" -ErrorAction Stop } catch { Write-Warning "Could not remove temporary drive letter $Drive; remove it in Disk Management after checking USB." }
+        try { Remove-PartitionAccessPath -DiskNumber $disk.Number -PartitionNumber 2 -AccessPath "$($Drive):\" -ErrorAction Stop } catch { Write-Warning "Could not remove temporary drive letter $Drive; remove it in Disk Management after checking USB." }
     }
     if (Test-Path $Work) { Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue }
 }
