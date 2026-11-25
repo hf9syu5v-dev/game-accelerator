@@ -81,11 +81,7 @@ if ((Read-Host "Save locally to Documents? Enter YES to confirm") -cne "YES") {
     exit 0
 }
 
-$docs = [Environment]::GetFolderPath("MyDocuments")
-if ([string]::IsNullOrWhiteSpace($docs) -or -not (Test-Path $docs)) { $docs = Join-Path $env:USERPROFILE "Documents" }
-New-Item -ItemType Directory -Path $docs -Force | Out-Null
-$out = Join-Path $docs "B460M-SMBIOS-Values-LOCAL.txt"
-@(
+$contentLines = @(
     "B460M-PLUS OpenCore PlatformInfo / Generic"
     "Generated locally: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     ""
@@ -98,9 +94,40 @@ $out = Join-Path $docs "B460M-SMBIOS-Values-LOCAL.txt"
     "NIC MAC = $($mac.ToUpperInvariant())"
     ""
     "Keep private. Do not upload or commit this file to GitHub."
-) | Set-Content -LiteralPath $out -Encoding UTF8
+)
+$fileText = ($contentLines -join [Environment]::NewLine) + [Environment]::NewLine
+$utf8 = New-Object System.Text.UTF8Encoding($true)
+$saveCandidates = @()
+$myDocs = [Environment]::GetFolderPath("MyDocuments")
+if (-not [string]::IsNullOrWhiteSpace($myDocs)) { $saveCandidates += $myDocs }
+if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $saveCandidates += (Join-Path $env:USERPROFILE "Documents")
+    $saveCandidates += (Join-Path $env:USERPROFILE "Downloads")
+}
+if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) { $saveCandidates += $PSScriptRoot }
+
+$savedPath = $null
+foreach ($folder in ($saveCandidates | Select-Object -Unique)) {
+    try {
+        if (-not (Test-Path -LiteralPath $folder -PathType Container)) {
+            New-Item -ItemType Directory -Path $folder -Force -ErrorAction Stop | Out-Null
+        }
+        if (-not (Test-Path -LiteralPath $folder -PathType Container)) { continue }
+        $candidate = Join-Path $folder "B460M-SMBIOS-Values-LOCAL.txt"
+        [System.IO.File]::WriteAllText($candidate, $fileText, $utf8)
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $savedPath = $candidate
+            break
+        }
+    } catch {
+        Write-Host ("Could not save to {0}: {1}" -f $folder, $_.Exception.Message) -ForegroundColor Yellow
+    }
+}
+if (-not $savedPath) {
+    throw "Could not save the local SMBIOS file. Check folder permissions and available disk space."
+}
 
 Write-Host ""
-Write-Host "Saved successfully: $out" -ForegroundColor Green
+Write-Host "Saved successfully: $savedPath" -ForegroundColor Green
 Write-Host "Keep this file private. Do not publish it or commit it to GitHub."
 Write-Host "No EFI, config.plist, BIOS, or disk was modified."
