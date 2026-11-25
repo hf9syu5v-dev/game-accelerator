@@ -58,7 +58,9 @@ jobs:
             $stage = Join-Path $w 'staging'
             New-Item -ItemType Directory -Path $stage | Out-Null
             $sourceRoot = (Resolve-Path -LiteralPath $src).Path.TrimEnd('\')
-            Get-ChildItem -LiteralPath $src -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse -Force }
+            & robocopy $src $stage /E /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null
+            $copyExit = $LASTEXITCODE
+            if ($copyExit -ge 8) { throw "Robocopy staging failed with exit code $copyExit" }
             foreach ($f in $files) {
               $relative = $f.FullName.Substring($sourceRoot.Length).TrimStart('\')
               $d = Join-Path $stage $relative
