@@ -62,15 +62,30 @@ try {
         Stop-Task 'MACRECOVERY_SCRIPT_DOWNLOAD_FAILED.'
     }
 
-    Write-Host 'Requesting Sequoia Recovery from Apple. This may take some time ...' -ForegroundColor Yellow
+    Write-Host 'Requesting Sequoia Recovery from Apple. Transient network failures will be retried up to 5 times ...' -ForegroundColor Yellow
     $argsList = @($macRecovery, '-b', $BoardId, '-m', $Mlb, '-o', $downloadDir, 'download')
-    if ($Py.Name -eq 'py.exe') {
-        & $Py.Source -3 @argsList
-    } else {
-        & $Py.Source @argsList
+    $downloadExit = 1
+    $retryDelays = @(10, 20, 40, 60)
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        # Remove partial Apple responses before a clean retry; this is only the TEMP download directory.
+        Get-ChildItem -LiteralPath $downloadDir -Force -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Write-Host ("APPLE_RECOVERY_ATTEMPT={0}/5" -f $attempt) -ForegroundColor Cyan
+        if ($Py.Name -eq 'py.exe') {
+            & $Py.Source -3 @argsList
+        } else {
+            & $Py.Source @argsList
+        }
+        $downloadExit = $LASTEXITCODE
+        if ($downloadExit -eq 0) { break }
+        if ($attempt -lt 5) {
+            $wait = $retryDelays[$attempt - 1]
+            Write-Warning ("Apple download failed (exit {0}); retrying in {1} seconds. USB Recovery remains untouched." -f $downloadExit,$wait)
+            Start-Sleep -Seconds $wait
+        }
     }
-    if ($LASTEXITCODE -ne 0) {
-        Stop-Task "APPLE_RECOVERY_DOWNLOAD_OR_CHUNKLIST_VERIFICATION_FAILED; EXIT=$LASTEXITCODE. Existing USB Recovery untouched."
+    if ($downloadExit -ne 0) {
+        Stop-Task "APPLE_RECOVERY_DOWNLOAD_OR_CHUNKLIST_VERIFICATION_FAILED_AFTER_5_ATTEMPTS; EXIT=$downloadExit. Existing USB Recovery untouched."
     }
 
     $downloaded = @(Get-ChildItem -LiteralPath $downloadDir -File)
