@@ -234,8 +234,9 @@ jobs:
           c["UEFI"]["Drivers"]=[d for d in c["UEFI"]["Drivers"] if d.get("Path")!="OpenUsbKbDxe.efi"]
           (oc/"Drivers/OpenUsbKbDxe.efi").unlink(missing_ok=True)
           d=c["Misc"]["Debug"]
-          d["AppleDebug"]=True; d["ApplePanic"]=False; d["DisableWatchdog"]=True
-          d["DisplayLevel"]=2151688018; d["Target"]=65; d["SysReport"]=False
+          d["AppleDebug"]=True; d["ApplePanic"]=False
+          d["DisplayLevel"]=2147483714; d["Target"]=65; d["SysReport"]=False
+          c["Misc"]["Security"]["HaltLevel"]=2147483648
           configs[0].write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
           out=Path("debug-output/EFI"); shutil.copytree(efi,out)
           print("DEBUG_INPUT_PROFILE=Auto; AppleEvent=Auto; Mirroring=On; log-to-file")
@@ -253,7 +254,7 @@ jobs:
           assert c["UEFI"]["AppleInput"]["AppleEvent"]=="Auto"
           assert c["UEFI"]["AppleInput"]["GraphicsInputMirroring"] is True
           assert c["Misc"]["Debug"]["Target"]==65
-          assert c["Misc"]["Debug"]["DisplayLevel"]==2151688018
+          assert c["Misc"]["Debug"]["DisplayLevel"]==2147483714
           for d in c["UEFI"]["Drivers"]:
               if d.get("Enabled"): assert (e/"OC/Drivers"/d["Path"]).is_file(),d["Path"]
           for a in c["ACPI"]["Add"]:
@@ -266,7 +267,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'Official OpenCore 1.0.5 DEBUG\nKeySupport=Auto; AppleEvent=Auto; GraphicsInputMirroring=true\nTarget=65 (file log); DisplayLevel=2151688018 (verbose)\n' > debug-output/DIAGNOSTIC-REPORT.txt
+          printf 'Official OpenCore 1.0.5 DEBUG\nKeySupport=Auto; AppleEvent=Auto; GraphicsInputMirroring=true\nTarget=65 (file log); DisplayLevel=2147483714 (verbose)\n' > debug-output/DIAGNOSTIC-REPORT.txt
           cd debug-output
           zip -qr ../B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip EFI DIAGNOSTIC-REPORT.txt
           unzip -t ../B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip
