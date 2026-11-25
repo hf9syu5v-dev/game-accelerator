@@ -65,7 +65,7 @@ Decision: include `SSDT-PLUG-DRTNIA.aml`. The 20 ACPI Processor declarations do 
 | SSDT-PLUG-DRTNIA.aml | Include | CPU path is \\_SB.PR00 |
 | SSDT-EC-USBX-DESKTOP.aml | Include | Native H_EC is hidden; desktop Fake EC + USBX required |
 | SSDT-AWAC.aml | Include | B460/Comet Lake clock fix; GNVS STAS selects legacy RTC |
-| SSDT-RHUB.aml | Include | ASUS 400-series XHC RHUB workaround |
+| SSDT-RHUB-B460M-PLUS.aml | Compile custom DSL first | Generic prebuilt AML path does not match this DSDT's XHC (no underscore) |
 | SSDT-PMC.aml | Do not include | Not required for Comet Lake desktop |
 | SSDT-RTC0*.aml | Do not include for now | Native legacy RTC exists and AWAC method selects it |
 | Raw DSDT.aml | Do not add | Firmware already supplies DSDT |
