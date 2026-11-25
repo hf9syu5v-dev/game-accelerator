@@ -5,7 +5,7 @@ import argparse, ctypes, hashlib, json, os, shutil, subprocess, sys, tempfile, u
 from pathlib import Path, PurePosixPath
 
 ARTIFACT_URL = "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keysupport-v2-diagnostic/B460M-KeySupport-V2-Diagnostic-EFI.zip"
-ARTIFACT_SHA256 = "REPLACE_AFTER_BUILD"
+ARTIFACT_SHA256 = "4d3a2fc5f3d090c6c460035df3dc9529271685685b821cbe8166225b389a1889"
 DRIVE = "F:"
 MODEL = "LITEON I T LCS-128L9S"
 SERIAL = "000000123ADC"
