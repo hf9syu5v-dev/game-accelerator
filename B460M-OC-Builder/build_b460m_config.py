@@ -68,7 +68,7 @@ kexts = [
     ("VirtualSMC.kext", "as.vit9696.VirtualSMC", "Contents/MacOS/VirtualSMC"),
     ("WhateverGreen.kext", "as.vit9696.WhateverGreen", "Contents/MacOS/WhateverGreen"),
     ("AppleALC.kext", "as.vit9696.AppleALC", "Contents/MacOS/AppleALC"),
-    ("IntelMausi.kext", "com.insanelymac.IntelMausi", "Contents/MacOS/IntelMausi"),
+    ("IntelMausi.kext", "as.acidanthera.mieze.IntelMausi", "Contents/MacOS/IntelMausi"),
     ("NVMeFix.kext", "as.vit9696.NVMeFix", "Contents/MacOS/NVMeFix"),
 ]
 kernel = need(cfg, "Kernel")
