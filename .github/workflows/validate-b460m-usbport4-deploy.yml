@@ -1,0 +1,72 @@
+name: Validate B460M USB port 4 deployment script
+
+on:
+  push:
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-USB-Port4-Diagnostic-Contents.ps1"
+      - ".github/workflows/validate-b460m-usbport4-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-powershell-51-validation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell 5.1 and audit disk safety
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'B460M-OC-Builder/Deploy-B460M-USB-Port4-Diagnostic-Contents.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          $source = Get-Content -LiteralPath $path -Raw
+          foreach ($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk','Set-Partition')) {
+            if ($source -match [regex]::Escape($term)) { throw "Forbidden disk operation found: $term" }
+          }
+          foreach ($required in @(
+            '000000123ADC',
+            'LITEON I T LCS-128L9S',
+            'c22727abdbac0e98e3849cb776ae85dfacb0c1a67db9c678a61785b0a23c3afb',
+            'HS04',
+            'SS04',
+            'EFI-PREVIOUS-NO-IGPU',
+            'Rename-Item',
+            'Get-Partition -DriveLetter'
+          )) {
+            if ($source -notmatch [regex]::Escape($required)) { throw "Required assertion missing: $required" }
+          }
+          if ($source -match 'Remove-Item[^\r\n]*EFI') { throw 'Active EFI deletion pattern is forbidden.' }
+          'POWERSHELL_51_PARSE=PASS'
+          'DISK_PARTITION_SAFETY_AUDIT=PASS'
+          'OLD_EFI_PRESERVATION_CHECK=PASS'
+
+      - name: Download and validate exact diagnostic package
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-usbport4-diagnostic/B460M-USB-Port4-Diagnostic-EFI.zip'
+          $expected = 'c22727abdbac0e98e3849cb776ae85dfacb0c1a67db9c678a61785b0a23c3afb'
+          $zip = Join-Path $env:RUNNER_TEMP 'B460M-USB-Port4-Diagnostic-EFI.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "SHA256 mismatch. Expected $expected; got $actual" }
+          $out = Join-Path $env:RUNNER_TEMP 'port4-efi'
+          Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
+          $efi = Join-Path $out 'EFI'
+          foreach ($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Kexts\UTBMap.kext\Contents\Info.plist')) {
+            if (!(Test-Path -LiteralPath (Join-Path $efi $rel) -PathType Leaf)) { throw "Missing EFI file: $rel" }
+          }
+          $map = Get-Content -LiteralPath (Join-Path $efi 'OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
+          if ($map -notmatch '<key>HS04</key>' -or $map -notmatch '<key>SS04</key>') { throw 'USB port 4 HS/SS pair missing.' }
+          $config = Get-Content -LiteralPath (Join-Path $efi 'OC\config.plist') -Raw
+          if ($config -notmatch '-wegnoigpu' -or $config -match '-wegnoegpu' -or $config -notmatch 'iMac20,1') { throw 'EFI config assertion failed.' }
+          "ARTIFACT_SHA256=$actual"
+          'WINDOWS_EXPAND_ARCHIVE=PASS'
+          'USB_PORT4_PAIR=PASS'
+          'EFI_STRUCTURE_AND_CONFIG=PASS'
