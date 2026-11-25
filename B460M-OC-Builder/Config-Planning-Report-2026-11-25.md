@@ -1,3 +1,6 @@
+> **历史规划文档，已被后续配置审计和 Run 45572403055 覆盖（2026-11-25）。**
+> 本文中“暂不生成 config.plist / 不写入 SMBIOS 值”“使用 alcid=3”“启用 SSDT-RHUB”“暂不启用 USB 映射 kext”等早期方案均不是当前实施状态。当前实际候选配置以 [Config Compatibility Audit](Config-Compatibility-Audit-2026-11-25.md)、[BIOS Preflight Checklist](BIOS-Preflight-Checklist-2026-11-25.md) 和 [Artifact Audit Run 45572403055](Artifact-Audit-Run-45572403055.md) 为准。当前 staging 使用 iMac20,1 临时测试 SMBIOS、USBToolBox+用户原始 UTBMap、PLUG/EC-USBX/AWAC 三张 ACPI 表，且未设置音频 layout ID。该 artifact 仍标记为 **STAGING ONLY — NOT BOOTABLE**。保留本文仅作决策历史，不得据此重新构建。
+>
 # B460M-PLUS OpenCore config planning report
 
 Date: 2026-11-25
