@@ -102,7 +102,7 @@ User selected the headless Quick Sync design: RX 570 remains the display/output 
 
 For Comet Lake-S desktop UHD 630, the Dortania Comet Lake guide identifies the headless platform-id as Data `0300C89B` (framebuffer `0x9BC80003`); the official WhateverGreen framebuffer table lists `0x9BC80003` as a desktop framebuffer with zero connectors and 1 MB stolen memory. Candidate DeviceProperties path is `PciRoot(0x0)/Pci(0x2,0x0)`, subject to confirming the actual IGPU PCI device in this machine.
 
-Initial candidate: inject only `AAPL,ig-platform-id` = Data `0300C89B`. Do not add connector patches, `framebuffer-patch-enable`, `framebuffer-stolenmem`, or a fake `device-id` for a headless framebuffer. Before finalizing, read the actual iGPU Hardware Ids in Windows Device Manager (Properties -> Details -> Hardware Ids) because this is an ES CPU and its reported PCI device ID must be confirmed rather than assumed. If the hardware ID is already a supported Comet Lake UHD 630 ID (for example 9BC8/9BC5/9BC4), do not spoof it.
+Initial candidate: inject only `AAPL,ig-platform-id` = Data `0300C89B`. Do not add connector patches, `framebuffer-patch-enable`, `framebuffer-stolenmem`, or a fake `device-id` for a headless framebuffer. Confirmed from the user's Windows Device Manager Hardware Id: `PCI\\VEN_8086&DEV_9BC8&SUBSYS_86941043&REV_00`. `VEN_8086&DEV_9BC8` confirms the Intel Comet Lake UHD 630 PCI device; ASUS subsystem `SUBSYS_86941043` is recorded. No `device-id` spoofing or override is needed. The candidate headless `AAPL,ig-platform-id` remains Data `0300C89B`.
 
 ### Audio
 ALC S1200A is the identified codec. Use alcid=3 as the first test candidate because a community EFI for the closely matching ASUS TUF B460M-PLUS Wi-Fi / i5-10400 platform reports layout-id 3. This is evidence for a test, not proof that every board revision and jack configuration behaves identically. Confirm speaker output, microphone input, front-panel detection and sleep/wake audio before treating audio as complete. Do not keep the Sample.plist's unrelated layout-id by accident.
@@ -111,7 +111,7 @@ ALC S1200A is the identified codec. Use alcid=3 as the first test candidate beca
 
 1. Direct CFG Lock state is still desirable but is no longer a blocker: use the provisional AppleXcpmCfgLock workaround for a first-boot candidate, then verify from DEBUG log.
 2. Direct CPUID read is still desirable as a final confirmation, but Intel's datasheet already maps the reported Comet Lake-S G0 stepping to 0x000A0650; do not spoof this value by default.
-3. Confirm the ES CPU's actual UHD iGPU PCI Hardware Id in Windows Device Manager before finalizing the headless DeviceProperties entry.
+3. iGPU PCI Hardware Id is confirmed: `PCI\\VEN_8086&DEV_9BC8&SUBSYS_86941043&REV_00`; no device-id spoofing planned.
 4. Whether user is willing to generate a unique iMac20,1 SMBIOS using GenSMBIOS; serial, MLB, ROM and UUID will not be invented by this project.
 
 ## 5. Safety gates before any boot attempt
