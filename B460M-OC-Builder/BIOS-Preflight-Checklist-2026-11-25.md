@@ -13,6 +13,8 @@ Purpose: read-only preflight before any first-boot attempt with the staging EFI.
 |---|---|---|
 | BIOS version | 1601 | Confirmed |
 | VT-d | Disabled | Confirmed |
+| Intel (VMX) Virtualization Technology / VT-x | Disabled | Confirmed by user; enable is recommended for the planned macOS setup |
+| Execute Disable Bit / XD | Not found in BIOS CPU Configuration | User inspected; record as unavailable/not found, not as enabled |
 | Above 4G Decoding | Enabled | Confirmed |
 | Primary Display | Auto | Confirmed |
 | iGPU Multi-Monitor | Enabled | Confirmed |
@@ -24,15 +26,13 @@ Purpose: read-only preflight before any first-boot attempt with the staging EFI.
 | CSM / Launch CSM | Disabled | Confirmed from BIOS screenshot |
 | Fast Boot | Disabled | User confirmed changed from Enabled to Disabled |
 | Secure Boot → OS Type | Other OS; Secure Boot state field displays `User` | OS Type confirmed. `User` alone does not prove Secure Boot enforcement is disabled; actual enforcement state remains unverified |
-| Intel VT-x | Screenshot says `Intel VT-x Technology: Supported` | CPU capability confirmed; BIOS enable/disable state not shown |
 
 ## Read-only checks still needed before a hardware boot
 
 | BIOS item | Dortania Comet Lake recommendation | Current evidence |
 |---|---|---|
 | Secure Boot | Disabled | OS Type is `Other OS`; status field says `User`. Actual enforcement state remains unverified |
-| VT-x | Enabled | CPU reports `Supported`; BIOS enable/disable state not shown |
-| Execute Disable Bit / XD | Enabled | Not yet confirmed |
+| VT-x | Enabled | Currently Disabled; user should enable it |
 | SATA Controller Mode | AHCI | Not yet confirmed; **do not change until Windows storage configuration is understood** |
 | Serial/COM and Parallel ports | Disabled if present | Not yet confirmed |
 | Intel SGX / Intel Platform Trust | Disabled if present | Not yet confirmed |
