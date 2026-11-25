@@ -47,20 +47,26 @@ try{
   $resumePartitionNumber=[int]$data[0].PartitionNumber
   $resumeLetter=[string]$data[0].DriveLetter
   if([string]::IsNullOrWhiteSpace($resumeLetter)){
-   $used=@(Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue|ForEach-Object{([string]$_.DeviceID).TrimEnd(':')})
-   foreach($candidate in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $candidate){$resumeLetter=$candidate;break}}
+   Write-Host 'DIAG: existing FAT32 partition has no drive letter; using DiskPart ASSIGN (same method as the successful original build).'
+   $used=@(Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction Stop | ForEach-Object { ([string]$_.DeviceID).TrimEnd(':') })
+   foreach($candidate in @('E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z')){
+    if($used -notcontains $candidate){$resumeLetter=$candidate;break}
+   }
    if([string]::IsNullOrWhiteSpace($resumeLetter)){Fail 'No free drive letter available to resume the existing USB partition.'}
-   Add-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $resumePartitionNumber -AccessPath ($resumeLetter+':\') -ErrorAction Stop
+   $assignScript=Join-Path $env:TEMP ('B460M-assign-'+[guid]::NewGuid().ToString('N')+'.txt')
+   @("select disk $($d.Number)","select partition $resumePartitionNumber","assign letter=$resumeLetter",'exit') | Set-Content -LiteralPath $assignScript -Encoding ASCII
+   try{
+    $assignOut=& diskpart.exe /s $assignScript 2>&1
+    $assignOut | ForEach-Object { Write-Host ([string]$_) }
+    if($LASTEXITCODE -ne 0){Fail "DiskPart drive-letter assignment failed with exit code $LASTEXITCODE."}
+   }finally{Remove-Item -LiteralPath $assignScript -Force -ErrorAction SilentlyContinue}
    if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
    Start-Sleep -Seconds 3
   }
   Write-Host ("DIAG: resume drive letter=["+$resumeLetter+"]")
-  Write-Host 'DIAG: before .NET DriveInfo enumeration'
-  $vol=@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.Name -eq ($resumeLetter + ':\') }) | Select-Object -First 1
-  if($null -eq $vol){Fail ("Safety stop: drive "+$resumeLetter+": is not mounted. No files copied or formatted.")}
-  if(!$vol.IsReady){Fail ("Safety stop: drive "+$resumeLetter+": is not ready. No files copied or formatted.")}
-  if($vol.DriveFormat -ne 'FAT32' -or $vol.VolumeLabel -ne 'OC-SEQUOIA'){Fail ("Safety stop: drive "+$resumeLetter+": is not the expected FAT32 volume. No files copied or formatted.")}
-  Write-Host 'DIAG: .NET DriveInfo volume check passed'
+  $resumeVol=Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction Stop | Where-Object { $_.DeviceID -eq ($resumeLetter+':') } | Select-Object -First 1
+  if(!$resumeVol -or $resumeVol.FileSystem -ne 'FAT32' -or $resumeVol.VolumeName -ne 'OC-SEQUOIA'){Fail ("Safety stop: "+$resumeLetter+": is not the expected FAT32 OC-SEQUOIA volume. No files copied or formatted.")}
+  Write-Host 'DIAG: Win32_LogicalDisk volume check passed'
   $chosenLetter=$resumeLetter
   $resumeExisting=$true
   Write-Host ("RESUME_EXISTING_USB_LAYOUT: MSR+FAT32; DRIVE="+$resumeLetter+": (existing partition preserved)") -ForegroundColor Yellow
@@ -135,8 +141,8 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  for($i=1;$i -le 15;$i++){
   if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
   Start-Sleep -Seconds 2
-  $logical=@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.Name -eq ($chosenLetter + ':\') }) | Select-Object -First 1
-  if($logical -and $logical.IsReady -and $logical.DriveFormat -eq 'FAT32' -and $logical.VolumeLabel -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}
+  $logical=Get-CimInstance -ClassName Win32_LogicalDisk -ErrorAction SilentlyContinue | Where-Object { $_.DeviceID -eq ($chosenLetter+':') } | Select-Object -First 1
+  if($logical -and $logical.FileSystem -eq 'FAT32' -and $logical.VolumeName -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}
  }
  if(!$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA' -or !(Test-Path $root)){Fail "New FAT32 volume not accessible/verified: drive=$chosenLetter; fs=$($logical.FileSystem); label=$($logical.VolumeName)."}
  Write-Host "TEMPORARY_BASIC_DATA_VOLUME_VERIFIED: $root" -ForegroundColor Green
