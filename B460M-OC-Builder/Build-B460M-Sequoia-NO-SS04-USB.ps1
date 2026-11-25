@@ -23,13 +23,18 @@ function Set-EspPartitionType([int]$diskNumber,[int]$partitionNumber){
 }
 try{
  Write-Host '=== BUILD SEQUOIA USB: VERIFIED LITEON ONLY ===' -ForegroundColor Cyan
+ Write-Host 'DIAG: banner reached'
  if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){Fail 'Requires Windows PowerShell 5.1.'}
  $wi=[Security.Principal.WindowsIdentity]::GetCurrent();$wp=New-Object Security.Principal.WindowsPrincipal($wi)
  if(!$wp.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){Fail 'Run PowerShell as Administrator.'}
+ Write-Host 'DIAG: before Get-Disk selection'
  $ds=@(Get-Disk|Where-Object{$_.FriendlyName -eq $Model -and $_.SerialNumber -and (($_.SerialNumber.Trim() -replace '\s','') -eq $Serial) -and $_.BusType -eq 'USB' -and $_.Size -ge 115GB -and $_.Size -le 125GB})
  if($ds.Count -ne 1){Fail "Safety stop: expected one matching USB, found $($ds.Count)."}
+ Write-Host 'DIAG: target disk uniquely selected'
  $d=$ds[0];if($d.IsBoot -or $d.IsSystem -or $d.IsReadOnly -or $d.IsOffline){Fail 'Safety stop: target is boot/system/read-only/offline.'}
+ Write-Host 'DIAG: before Get-Partition'
  $pnow=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+ Write-Host 'DIAG: partitions retrieved'
  $part=$null
  if($pnow.Count -eq 0){
   $resumeExisting=$false
@@ -38,6 +43,7 @@ try{
   $msr=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -and $_.Size -ge 15MB -and $_.Size -le 17MB})
   $data=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB})
   if($pnow.Count -ne 2 -or $msr.Count -ne 1 -or $data.Count -ne 1){Fail "Safety stop: USB has $($pnow.Count) partitions, not the exact recognized resumable layout. No disk changes made."}
+  Write-Host 'DIAG: resumable layout matched'
   $resumePartitionNumber=[int]$data[0].PartitionNumber
   $resumeLetter=[string]$data[0].DriveLetter
   if([string]::IsNullOrWhiteSpace($resumeLetter)){
@@ -48,7 +54,9 @@ try{
    if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
    Start-Sleep -Seconds 3
   }
+  Write-Host 'DIAG: before Get-Volume'
   $vol=Get-Volume -DriveLetter $resumeLetter -ErrorAction Stop
+  Write-Host 'DIAG: Get-Volume returned'
   if(!$vol -or $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA'){Fail ("Safety stop: existing partition "+$resumeLetter+": is not the expected FAT32 volume. No files copied or formatted.")}
   $chosenLetter=$resumeLetter
   $resumeExisting=$true
@@ -144,7 +152,17 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  if(([string]$finalPart.GptType).Trim('{}').ToLowerInvariant() -ne $Esp -or $finalPart.DriveLetter){Fail 'Final ESP restoration check failed.'}
  Write-Host 'FINAL_PARTITION_TYPE=EFI_SYSTEM_PARTITION; DRIVE_LETTER=REMOVED' -ForegroundColor Green
  Write-Host 'USB_BUILD_SUCCESS' -ForegroundColor Green;Write-Host "USB_ROOT=$root";Write-Host "EFI_FILES_VERIFIED=$($files.Count)";Write-Host 'APPLE_RECOVERY=VERIFIED';Write-Host 'COPY_SHA256=PASS';Write-Host 'DISK_REBUILT_FROM_UNALLOCATED_STATE=YES'
-}catch{Write-Host ("ERROR: "+$_.Exception.Message) -ForegroundColor Red;exit 1}
+}catch{
+ $err=$_
+ Write-Host ("ERROR: "+$err.Exception.Message) -ForegroundColor Red
+ if($err.InvocationInfo){
+  Write-Host ("ERROR_LINE: "+$err.InvocationInfo.ScriptLineNumber) -ForegroundColor Yellow
+  Write-Host ("ERROR_COMMAND: "+$err.InvocationInfo.Line.Trim()) -ForegroundColor Yellow
+  Write-Host ("ERROR_POSITION: "+$err.InvocationInfo.PositionMessage) -ForegroundColor Yellow
+ }
+ Write-Host ("ERROR_TYPE: "+$err.Exception.GetType().FullName) -ForegroundColor Yellow
+ exit 1
+}
 finally{
  if($espTemporarilyChanged){
   try{
