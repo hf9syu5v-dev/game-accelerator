@@ -96,7 +96,7 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  $recDest=Join-Path $root 'com.apple.recovery.boot';if(Test-Path $recDest){Remove-Item $recDest -Recurse -Force};Copy-Item $rec $root -Recurse -Force
  foreach($f in $files){$rel=$f.FullName.Substring($src.Length).TrimStart([char]92);$dest=Join-Path $efiroot $rel;if(!(Test-Path $dest -PathType Leaf) -or (Hash $dest) -ne (Hash $f.FullName)){Fail "EFI SHA256 mismatch: $rel"}}
  foreach($n in @('BaseSystem.dmg','BaseSystem.chunklist')){$a=Join-Path $rec $n;$b=Join-Path $recDest $n;if(!(Test-Path $b -PathType Leaf) -or (Hash $a) -ne (Hash $b)){Fail "Recovery SHA256 mismatch: $n"}}
- @('B460M Sequoia NO-SS04 USB resume',("DISK="+$d.Number),("SERIAL="+$Serial),'GPT=YES','ESP=YES','FAT32=YES',("EFI_FILES="+$files.Count),'HS04_SS04=ABSENT','APPLE_RECOVERY_CHUNKLIST=VERIFIED','SHA256_COPY=PASS','DISKPART_GPT_FAT32_BUILD=YES','FINAL_PARTITION_TYPE=ESP')|Set-Content (Join-Path $root 'USB-BUILD-REPORT.txt') -Encoding ASCII
+ @('B460M Sequoia NO-SS04 USB build',("DISK="+$d.Number),("SERIAL="+$Serial),'GPT=YES','FAT32=YES','ESP_TYPE=APPLIED_AFTER_COPY_VERIFICATION',("EFI_FILES="+$files.Count),'HS04_SS04=ABSENT','APPLE_RECOVERY_CHUNKLIST=VERIFIED','SHA256_COPY=PASS')|Set-Content (Join-Path $root 'USB-BUILD-REPORT.txt') -Encoding ASCII
  # Remove the temporary drive letter and restore the required ESP type before boot.
  Remove-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -AccessPath $root -ErrorAction Stop
  Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -GptType $Esp -ErrorAction Stop
