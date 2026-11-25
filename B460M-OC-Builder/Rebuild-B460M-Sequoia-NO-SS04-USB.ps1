@@ -86,4 +86,4 @@ try {
  Write-Host 'CLEAN_REBUILD_SUCCESS' -ForegroundColor Green
  Write-Host "USB_ROOT=$root";Write-Host "EFI_FILES_VERIFIED=$($files.Count)";Write-Host 'HS04_SS04=ABSENT';Write-Host 'APPLE_RECOVERY=VERIFIED';Write-Host 'COPY_SHA256=PASS';Write-Host 'INTERNAL_DISKS=NOT_TOUCHED'
 } catch {Write-Host ("ERROR: "+$_.Exception.Message) -ForegroundColor Red;exit 1}
-finally {Pop-Location -ErrorAction SilentlyContinue;if(Test-Path $Work){Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue}}
+finally {if(Test-Path $Work){Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue}}
