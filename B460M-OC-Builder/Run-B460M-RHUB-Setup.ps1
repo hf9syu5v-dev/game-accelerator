@@ -65,7 +65,7 @@ try {
     Get-VerifiedDownload "$RepoRaw/B460M-OC-Builder/EFI/EFI/OC/ACPI/$DslName" $dslPath {
         param($p)
         $s = [IO.File]::ReadAllText($p)
-        return ($s.Contains("DefinitionBlock") -and $s.Contains("_SB.PCI0.XHC.RHUB") -and $s.Contains('"_STA"'))
+        return ($s.Contains("DefinitionBlock") -and $s.Contains("_SB.PCI0.XHC.RHUB") -and $s.Contains("Method (_STA"))
     }
     Write-Host "DSL 已下载并通过内容检查。"
 
