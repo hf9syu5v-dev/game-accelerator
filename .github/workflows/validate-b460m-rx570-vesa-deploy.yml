@@ -1,0 +1,94 @@
+name: Validate B460M RX570 VESA deployment script
+
+on:
+  push:
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-RX570-VESA-Diagnostic-Contents.ps1"
+      - ".github/workflows/validate-b460m-rx570-vesa-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-powershell-51-validation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell 5.1 and audit disk safety
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'B460M-OC-Builder/Deploy-B460M-RX570-VESA-Diagnostic-Contents.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          $source = Get-Content -LiteralPath $path -Raw
+          foreach ($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk','Add-PartitionAccessPath','Remove-PartitionAccessPath')) {
+            if ($source -match [regex]::Escape($term)) { throw "Forbidden disk operation found: $term" }
+          }
+          foreach ($required in @(
+            '000000123ADC',
+            'LITEON I T LCS-128L9S',
+            'fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf',
+            '-radvesa',
+            '-wegnoigpu',
+            'HS04',
+            'SS04',
+            'EFI-PREVIOUS-PORT4-DIAGNOSTIC',
+            'Rename-Item',
+            'Get-Partition -DriveLetter'
+          )) {
+            if ($source -notmatch [regex]::Escape($required)) { throw "Required assertion missing: $required" }
+          }
+          if ($source -match 'Remove-Item[^\r\n]*EFI') { throw 'Active EFI deletion pattern is forbidden.' }
+          'POWERSHELL_51_PARSE=PASS'
+          'DISK_PARTITION_SAFETY_AUDIT=PASS'
+          'OLD_EFI_PRESERVATION_CHECK=PASS'
+
+      - name: Download and validate exact EFI package
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip'
+          $expected = 'fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf'
+          $zip = Join-Path $env:RUNNER_TEMP 'B460M-RX570-VESA-Diagnostic-EFI.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "SHA256 mismatch. Expected $expected; got $actual" }
+          $out = Join-Path $env:RUNNER_TEMP 'rx570-vesa-efi'
+          Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
+          $efi = Join-Path $out 'EFI'
+          foreach ($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Kexts\UTBMap.kext\Contents\Info.plist','OC\Kexts\WhateverGreen.kext\Contents\Info.plist')) {
+            if (!(Test-Path -LiteralPath (Join-Path $efi $rel) -PathType Leaf)) { throw "Missing EFI file: $rel" }
+          }
+          $map = Get-Content -LiteralPath (Join-Path $efi 'OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
+          if ($map -notmatch '<key>HS04</key>' -or $map -notmatch '<key>SS04</key>') { throw 'USB port 4 HS/SS pair missing.' }
+          $config = Get-Content -LiteralPath (Join-Path $efi 'OC\config.plist') -Raw
+          if ($config -notmatch '-wegnoigpu' -or $config -notmatch '-radvesa' -or $config -match '-wegnoegpu' -or $config -notmatch 'iMac20,1') { throw 'EFI config assertion failed.' }
+          "ARTIFACT_SHA256=$actual"
+          'WINDOWS_EXPAND_ARCHIVE=PASS'
+          'USB_PORT4_PAIR=PASS'
+          'RX570_VESA_ARGUMENT=PASS'
+          'EFI_STRUCTURE_AND_CONFIG=PASS'
+
+      - name: Simulate staging copy and SHA256 read-back
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src = Join-Path $env:RUNNER_TEMP 'rx570-vesa-efi/EFI'
+          $dst = Join-Path $env:RUNNER_TEMP 'rx570-vesa-staging'
+          New-Item -ItemType Directory -Path $dst | Out-Null
+          Get-ChildItem -LiteralPath $src -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $dst -Recurse }
+          $files = @(Get-ChildItem -LiteralPath $src -File -Recurse)
+          foreach ($f in $files) {
+            $rel = $f.FullName.Substring($src.Length).TrimStart([char]92)
+            $copy = Join-Path $dst $rel
+            if (!(Test-Path -LiteralPath $copy -PathType Leaf)) { throw "Missing staged file: $rel" }
+            $a = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash
+            $b = (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash
+            if ($a -ne $b) { throw "Staging hash mismatch: $rel" }
+          }
+          "STAGING_SHA256=PASS; FILES=$($files.Count)"
