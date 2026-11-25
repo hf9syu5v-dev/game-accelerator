@@ -193,9 +193,9 @@ need(misc, "Security").update({
     "DmgLoading": "Signed",
     "EnablePassword": False,
     "ExposeSensitiveData": 6,
-    # USB-only scan: 0x00080000 is the USB device bit. 0x00200000 is SD, not USB.
+    # USB-only scan: 0x00200000 is USB; 0x00080000 is NVMe and remains excluded.
     # Keep APFS/HFS/EFI filesystems enabled and internal SATA/NVMe devices excluded.
-    "ScanPolicy": 0x00080703,
+    "ScanPolicy": 0x00200703,
     "SecureBootModel": "Default",
     "Vault": "Optional",
 })
