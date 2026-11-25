@@ -8,7 +8,7 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 jobs:
   diagnostic-efi:
@@ -154,3 +154,14 @@ jobs:
             build/
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish direct-download EFI package for the Windows deployment script
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-no-igpu-diagnostic-latest
+          name: B460M no-iGPU diagnostic EFI (latest)
+          target_commitish: ${{ github.sha }}
+          files: B460M-iGPU-Isolation-Diagnostic-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
