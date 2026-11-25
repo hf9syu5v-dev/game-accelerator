@@ -78,6 +78,14 @@ try {
     }
     Write-Host "PowerShell 编译脚本已下载并通过内容检查。"
 
+    # Windows PowerShell 5.1 may misread UTF-8 scripts without a BOM.
+    # Rewrite the downloaded child script as UTF-8 with BOM before invoking it.
+    $compileBytes = [IO.File]::ReadAllBytes($compilePath)
+    $compileText = [Text.Encoding]::UTF8.GetString($compileBytes)
+    $utf8Bom = New-Object System.Text.UTF8Encoding($true)
+    [IO.File]::WriteAllText($compilePath, $compileText, $utf8Bom)
+    Write-Host "编译脚本已转换为带 BOM 的 UTF-8，兼容 Windows PowerShell 5.1。"
+
     Write-Step "[4/6] 下载 ACPICA 官方 Windows iASL 工具"
     $zipPath = Join-Path $ToolsDir "iasl-win-20250807.zip"
     $extractDir = Join-Path $ToolsDir "iasl-win-20250807"
