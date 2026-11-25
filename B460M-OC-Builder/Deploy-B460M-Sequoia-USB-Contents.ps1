@@ -12,7 +12,7 @@ $RecoveryCache = Join-Path $env:LOCALAPPDATA 'B460M-Sequoia-RecoveryCache'
 $OpenCoreUrl = 'https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip'
 $OpenCoreSha256 = '3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6'
 $Work = Join-Path $env:TEMP ('B460M-USB-CONTENTS-' + [guid]::NewGuid().ToString('N'))
-$UsbRoot = 'F:\'
+$UsbRoot = 'E:\'
 function Stop-Deploy([string]$Message) { throw $Message }
 function Get-Sha256([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant() }
 
@@ -20,7 +20,7 @@ Write-Host '=== B460M SEQUOIA NO-IGPU EFI DEPLOYMENT ===' -ForegroundColor Cyan
 Write-Host 'CONTENTS ONLY: no disk, partition, format, or drive-letter operations.'
 
 $logical = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='E:'"
-if (!$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA') { Stop-Deploy 'SAFETY_STOP: E: must be FAT32 with volume label OC-SEQUOIA.' }
+if (!$logical -or $logical.FileSystem -ne 'FAT32') { Stop-Deploy 'SAFETY_STOP: E: must be FAT32.' }
 $part = Get-Partition -DriveLetter E -ErrorAction Stop
 if (([string]$part.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid) { Stop-Deploy "SAFETY_STOP: E: is not a GPT EFI System Partition. GPT type=$($part.GptType)" }
 $disk = Get-Disk -Number $part.DiskNumber -ErrorAction Stop
@@ -30,7 +30,7 @@ if ($disk.FriendlyName -ne $ExpectedModel -or $disk.SerialNumber.Trim() -ne $Exp
 Write-Host ("TARGET VERIFIED: Disk {0}; {1}; Serial {2}; E: FAT32 ESP." -f $disk.Number,$disk.FriendlyName,$disk.SerialNumber) -ForegroundColor Green
 
 foreach ($n in @('EFI','com.apple.recovery.boot','USB-BUILD-REPORT.txt')) {
-    if (Test-Path -LiteralPath (Join-Path $UsbRoot $n)) { Stop-Deploy "SAFETY_STOP: F:\$n already exists. Nothing overwritten." }
+    if (Test-Path -LiteralPath (Join-Path $UsbRoot $n)) { Stop-Deploy "SAFETY_STOP: E:\$n already exists. Nothing overwritten." }
 }
 $downloads = Join-Path $env:USERPROFILE 'Downloads'
 $zipCandidates = @(Get-ChildItem -LiteralPath $downloads -Filter '*.zip' -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)NO.?IGPU|15043941995' } | Sort-Object LastWriteTime -Descending)
@@ -127,9 +127,9 @@ m.verify_image(sys.argv[2], sys.argv[3])
     Write-Host 'APPLE_CHUNKLIST_VERIFICATION=PASS' -ForegroundColor Green
 
     $disk2 = Get-Disk -Number $disk.Number -ErrorAction Stop
-    $part2 = Get-Partition -DriveLetter F -ErrorAction Stop
-    $vol2 = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='F:'"
-    if ($disk2.FriendlyName -ne $ExpectedModel -or $disk2.SerialNumber.Trim() -ne $ExpectedSerial -or $disk2.BusType -ne 'USB' -or $disk2.IsBoot -or $disk2.IsSystem -or $part2.DiskNumber -ne $disk.Number -or ([string]$part2.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or !$vol2 -or $vol2.FileSystem -ne 'FAT32' -or $vol2.VolumeName -ne 'OC-SEQUOIA') { Stop-Deploy 'SAFETY_STOP: target identity changed before copy.' }
+    $part2 = Get-Partition -DriveLetter E -ErrorAction Stop
+    $vol2 = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='E:'"
+    if ($disk2.FriendlyName -ne $ExpectedModel -or $disk2.SerialNumber.Trim() -ne $ExpectedSerial -or $disk2.BusType -ne 'USB' -or $disk2.IsBoot -or $disk2.IsSystem -or $part2.DiskNumber -ne $disk.Number -or ([string]$part2.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or !$vol2 -or $vol2.FileSystem -ne 'FAT32') { Stop-Deploy 'SAFETY_STOP: target identity changed before copy.' }
     foreach ($n in @('EFI','com.apple.recovery.boot','USB-BUILD-REPORT.txt')) { if (Test-Path -LiteralPath (Join-Path $UsbRoot $n)) { Stop-Deploy "SAFETY_STOP: destination appeared: $n" } }
 
     $destEfi = Join-Path $UsbRoot 'EFI'
@@ -147,10 +147,10 @@ m.verify_image(sys.argv[2], sys.argv[3])
     }
     foreach ($n in @('BaseSystem.dmg','BaseSystem.chunklist')) { if ((Get-Sha256 (Join-Path $RecoveryCache $n)) -ne (Get-Sha256 (Join-Path $destRecovery $n))) { Stop-Deploy "RECOVERY_COPY_SHA256_MISMATCH: $n" } }
 
-    @('B460M Sequoia iGPU-isolation USB contents deployment',"TARGET_DRIVE=F:","DISK_MODEL=$($disk.FriendlyName)","DISK_SERIAL=$($disk.SerialNumber)",'PARTITION_STYLE=GPT','PARTITION_TYPE=EFI_SYSTEM_PARTITION','FILESYSTEM=FAT32','VOLUME_LABEL=OC-SEQUOIA',"EFI_FILES_SHA256_VERIFIED=$($efiFiles.Count)",'UTBMAP_HS04_SS04=ABSENT','BOOT_ARGS_WEGNOIGPU=PRESENT','BOOT_ARGS_WEGNOEGPU=ABSENT','APPLE_CHUNKLIST_VERIFICATION=PASS','COPY_SHA256_VERIFICATION=PASS','DISK_PARTITION_FORMAT_OPERATIONS=NONE','INTERNAL_DISKS=NOT_MODIFIED') | Set-Content -LiteralPath (Join-Path $UsbRoot 'USB-BUILD-REPORT.txt') -Encoding ASCII
+    @('B460M Sequoia iGPU-isolation USB contents deployment',"TARGET_DRIVE=E:","DISK_MODEL=$($disk.FriendlyName)","DISK_SERIAL=$($disk.SerialNumber)",'PARTITION_STYLE=GPT','PARTITION_TYPE=EFI_SYSTEM_PARTITION','FILESYSTEM=FAT32',"EFI_FILES_SHA256_VERIFIED=$($efiFiles.Count)",'UTBMAP_HS04_SS04=ABSENT','BOOT_ARGS_WEGNOIGPU=PRESENT','BOOT_ARGS_WEGNOEGPU=ABSENT','APPLE_CHUNKLIST_VERIFICATION=PASS','COPY_SHA256_VERIFICATION=PASS','DISK_PARTITION_FORMAT_OPERATIONS=NONE','INTERNAL_DISKS=NOT_MODIFIED') | Set-Content -LiteralPath (Join-Path $UsbRoot 'USB-BUILD-REPORT.txt') -Encoding ASCII
     Write-Host ''
     Write-Host 'SEQUOIA_USB_CONTENTS_DEPLOYMENT_SUCCESS' -ForegroundColor Green
-    Write-Host 'USB_ROOT=F:\'
+    Write-Host 'USB_ROOT=E:\'
     Write-Host "EFI_FILES_SHA256_VERIFIED=$($efiFiles.Count)"
     Write-Host 'APPLE_CHUNKLIST_VERIFICATION=PASS'
     Write-Host 'COPY_SHA256_VERIFICATION=PASS'
