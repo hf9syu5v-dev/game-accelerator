@@ -26,11 +26,13 @@ foreach ($p in $cpu) {
     $lines.Add("Family: $($p.Family)")
     $lines.Add("Stepping: $($p.Stepping)")
     $lines.Add("Revision: $($p.Revision)")
-    $id = [string]$p.ProcessorId
+    $id = ([string]$p.ProcessorId).Trim()
     if ($id -match '^[0-9A-Fa-f]{16}$') {
-        $sig = $id.Substring(0, 8).ToUpperInvariant()
-        $lines.Add("Candidate CPUID leaf 1 EAX from WMI ProcessorId prefix: 0x$sig")
-        $lines.Add("Note: WMI ProcessorId is a firmware/OS-reported identifier; confirm against a direct CPUID utility if available.")
+        # On the observed Intel WMI ProcessorId format, the final 8 hex digits
+        # encode the CPUID signature; the leading 8 digits are not EAX.
+        $sig = $id.Substring(8, 8).ToUpperInvariant()
+        $lines.Add("Candidate CPUID leaf 1 EAX from WMI ProcessorId suffix: 0x$sig")
+        $lines.Add("Caution: WMI ProcessorId is firmware/OS-reported data, not a direct CPUID instruction capture.")
     } else {
         $lines.Add("CPUID signature extraction: unavailable (unexpected WMI ProcessorId format)")
     }
