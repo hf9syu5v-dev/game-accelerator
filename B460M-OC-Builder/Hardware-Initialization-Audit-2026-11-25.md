@@ -105,3 +105,30 @@ There are 11 entries, 11 unique hardware indices, and `port-count=20`. CI now pi
 - AppleALC supported codecs: https://github.com/acidanthera/AppleALC/wiki/Supported-codecs
 
 This is a static configuration review. It is not a hardware boot test and does not authorize any internal-disk operation.
+
+
+## 9. Deep-review addendum — reviewed EFI changes and USB-map discrepancy (2026-11-25)
+
+The latest self-review identified and corrected two boot-test safety/diagnostic weaknesses and one board-specific audio omission:
+
+- `Misc -> Boot -> Timeout=0`: picker waits for manual selection; no automatic launch of a detected internal OS.
+- `Misc -> Security -> ScanPolicy=0x200703`: initial test scans USB devices and APFS/HFS/EFI filesystems only, excluding SATA/NVMe boot entries. This is a guardrail, not an absolute boundary; firmware device classification can vary. This USB-only profile is not the final internal-NVMe daily-boot profile.
+- DEBUG capture: `ApplePanic=True`, `DisableWatchDog=True`, `DisplayLevel=0x80000042`, `Target=67`; panic/log output is expected on the OpenCore boot volume, so initial testing must launch OpenCore from the removable USB.
+- ALC S1200A: HDEF `PciRoot(0x0)/Pci(0x1F,0x3)` now receives `layout-id=01000000` (layout 1), based on an exact-model non-Wi-Fi B460M-PLUS community EFI and its codec dump. Physical jack behavior remains untested.
+
+### USB map cross-check
+
+The current supplied UTBMap remains structurally valid (11 entries, unique indices, port-count 20), but a comparison against two public EFI projects for the same B460M-PLUS family exposed material differences:
+
+- Current supplied map: HS01–04 -> indices 1–4, HS05 -> 9, HS06 -> 10, HS07 -> 11 (internal), SS01–04 -> 17–20.
+- Exact non-Wi-Fi B460M-PLUS reference map: 10 HS entries (including HS05 index 5, HS07 index 7, HS08 index 8 internal, HS09 index 9, HS10 index 10, HS11 index 11 internal) and SS01–05 (indices 17–21), 15 entries total.
+- A B460M-PLUS Wi-Fi reference map has a different set again, including SS02 and SS04–08.
+
+ASUS documents 4 rear USB 3.2 Gen 1 Type-A ports, 2 rear USB 2.0 ports, one internal USB 3.2 Gen 1 header (2 ports), and two USB 2.0 headers (4 ports). The supplied 11-entry map therefore cannot be certified complete from structural checks alone. The community maps are useful comparison evidence, not proof of this machine's physical wiring. The current UTBMap was deliberately not overwritten with a guessed third-party map. Treat physical port-by-port validation as a high-priority hardware gate; until then, some rear/front ports may be missing or incorrectly classified.
+
+References:
+- Exact non-Wi-Fi B460M-PLUS reference EFI: https://github.com/Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH
+- B460M-PLUS Wi-Fi reference EFI: https://github.com/truedaz/OpenCore_ASUS-TUF-Gaming-B460M-Plus_i9-10850K_EFI
+- ASUS official B460M-PLUS manual / rear I/O and USB layout: https://dlcdnets.asus.com/pub/ASUS/mb/LGA1200/TUF_GAMING_B460M-PLUS/E17227_TUF_GAMING_B460M-PLUS_UM_V3_WEB.pdf
+
+No USB or internal disk has been written during this review.
