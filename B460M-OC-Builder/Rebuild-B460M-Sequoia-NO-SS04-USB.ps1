@@ -51,22 +51,36 @@ try {
  if((Hash $ocz) -ne $OCHash.ToLowerInvariant()){Fail 'OpenCore ZIP SHA256 mismatch.'}
  $ocdir=Join-Path $Work 'oc';Expand-Archive -LiteralPath $ocz -DestinationPath $ocdir -Force
  $mr=@(Get-ChildItem $ocdir -Filter macrecovery.py -File -Recurse);if($mr.Count -ne 1){Fail 'macrecovery.py not uniquely found.'}
- Write-Host 'STEP 4/5: Download Sequoia Recovery from Apple and verify chunklist...'
+ Write-Host 'STEP 4/5: Reuse local Sequoia Recovery when available; otherwise download and verify...'
  $rec=Join-Path $Work 'com.apple.recovery.boot';New-Item -ItemType Directory $rec -Force|Out-Null
  $dmg=Join-Path $rec 'BaseSystem.dmg';$chunk=Join-Path $rec 'BaseSystem.chunklist'
- $downloadOK=$false
- for($attempt=1;$attempt -le 6;$attempt++){
-  Write-Host "Apple Recovery download attempt $attempt/6..."
-  Remove-Item -LiteralPath $dmg,$chunk -Force -ErrorAction SilentlyContinue
-  Push-Location $mr[0].DirectoryName
-  try{& $pyexe @pyargs $mr[0].FullName -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 -o $rec download;$rc=$LASTEXITCODE}finally{Pop-Location}
-  if($rc -eq 0 -and (Test-Path $dmg -PathType Leaf) -and (Test-Path $chunk -PathType Leaf) -and (Get-Item $dmg).Length -ge 100MB -and (Get-Item $chunk).Length -ge 1KB){$downloadOK=$true;break}
-  Write-Warning "Apple download attempt $attempt failed (exit=$rc). Partial files will be discarded."
-  if($attempt -lt 6){Start-Sleep -Seconds ([math]::Min(30,5*$attempt))}
+ $localPair=$null
+ $searchRoots=@((Join-Path $env:USERPROFILE 'Downloads'),(Join-Path $env:USERPROFILE 'Desktop'),(Join-Path $env:USERPROFILE 'Documents'))
+ foreach($sr in $searchRoots){if(Test-Path $sr){$hit=Get-ChildItem -LiteralPath $sr -Filter 'BaseSystem.dmg' -File -Recurse -ErrorAction SilentlyContinue | Where-Object{Test-Path (Join-Path $_.DirectoryName 'BaseSystem.chunklist') -PathType Leaf} | Select-Object -First 1;if($hit){$localPair=$hit.DirectoryName;break}}}
+ if($localPair){
+  Write-Host "LOCAL_RECOVERY_FOUND: $localPair" -ForegroundColor Green
+  Copy-Item -LiteralPath (Join-Path $localPair 'BaseSystem.dmg') -Destination $dmg
+  Copy-Item -LiteralPath (Join-Path $localPair 'BaseSystem.chunklist') -Destination $chunk
+ }else{
+  Write-Host 'No local Recovery pair found; downloading from Apple with up to 6 retries.'
+  $downloadOK=$false
+  for($attempt=1;$attempt -le 6;$attempt++){
+   Write-Host "Apple Recovery download attempt $attempt/6..."
+   Remove-Item -LiteralPath $dmg,$chunk -Force -ErrorAction SilentlyContinue
+   Push-Location $mr[0].DirectoryName
+   try{& $pyexe @pyargs $mr[0].FullName -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 -o $rec download;$rc=$LASTEXITCODE}finally{Pop-Location}
+   if($rc -eq 0 -and (Test-Path $dmg -PathType Leaf) -and (Test-Path $chunk -PathType Leaf) -and (Get-Item $dmg).Length -ge 100MB -and (Get-Item $chunk).Length -ge 1KB){$downloadOK=$true;break}
+   Write-Warning "Apple download attempt $attempt failed (exit=$rc). Partial files will be discarded."
+   if($attempt -lt 6){Start-Sleep -Seconds ([math]::Min(30,5*$attempt))}
+  }
+  if(!$downloadOK){Fail 'Apple Recovery download failed after 6 attempts. USB unchanged.'}
  }
- if(!$downloadOK){Fail 'Apple Recovery download failed after 6 attempts. USB unchanged.'}
  if((Get-Item $dmg).Length -lt 100MB -or (Get-Item $chunk).Length -lt 1KB){Fail 'Apple Recovery size check failed.'}
- Write-Host "APPLE_RECOVERY_DOWNLOAD_AND_CHUNKLIST_VERIFICATION_OK; DMG_BYTES=$((Get-Item $dmg).Length)" -ForegroundColor Green
+ $verifyPy=Join-Path $Work 'verify_recovery.py'
+ @('import importlib.util, sys','p = sys.argv[1]','spec = importlib.util.spec_from_file_location("macrecovery", p)','m = importlib.util.module_from_spec(spec)','spec.loader.exec_module(m)','m.verify_image(sys.argv[2], sys.argv[3])') | Set-Content -LiteralPath $verifyPy -Encoding ASCII
+ & $pyexe @pyargs $verifyPy $mr[0].FullName $dmg $chunk
+ if($LASTEXITCODE -ne 0){Fail 'Apple chunklist verification failed. USB unchanged.'}
+ Write-Host "APPLE_RECOVERY_CHUNKLIST_VERIFICATION_OK; DMG_BYTES=$((Get-Item $dmg).Length)" -ForegroundColor Green
 
  Write-Host 'STEP 5/5: Recheck disk identity, clean, format GPT/FAT32 ESP, copy and verify...'
  $now=Get-Disk -Number $d.Number
