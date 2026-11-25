@@ -12,7 +12,7 @@ SERIAL = "000000123ADC"
 DISK_BYTES = 128035676160
 ESP_GUID = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
 KNOWN_GOOD_VESA = "EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC"
-BACKUP = "EFI-PREVIOUS-KEYSUPPORT-V2-DIAGNOSTIC"
+BACKUP = "EFI-PREVIOUS-NATIVE-FIRMWARE-DIAGNOSTIC"
 STAGE = "EFI-KEYSUPPORT-V2-STAGING"
 FAILED = "EFI-KEYSUPPORT-V2-FAILED"
 
@@ -47,7 +47,7 @@ def validate_efi(efi: Path) -> list[Path]:
     drivers=c.get("UEFI",{}).get("Drivers",[])
     args=c.get("NVRAM",{}).get("Add",{}).get("7C436110-AB2A-4BBB-A880-FE41995C9F82",{}).get("boot-args","").split()
     if inp.get("KeySupport") is not True or inp.get("KeySupportMode") != "V2":
-        raise RuntimeError("Expected KeySupport=true to bypass AppleGenericInput")
+        raise RuntimeError("Expected KeySupport=true and KeySupportMode=V2")
     if boot.get("PollAppleHotKeys") is not False: raise RuntimeError("PollAppleHotKeys must remain false")
     if any(d.get("Path")=="OpenUsbKbDxe.efi" for d in drivers): raise RuntimeError("OpenUsbKbDxe must not be configured")
     if (efi/"OC/Drivers/OpenUsbKbDxe.efi").exists(): raise RuntimeError("OpenUsbKbDxe binary must be absent")
