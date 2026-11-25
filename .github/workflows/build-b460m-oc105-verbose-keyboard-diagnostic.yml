@@ -61,7 +61,9 @@ jobs:
       - name: Bootstrap official Acidanthera build environment
         shell: bash
         run: |
-          set -euo pipefail
+          # ocbuild's bootstrap script intentionally references optional unset variables.
+          # Keep errexit/pipefail, but do not enable nounset while evaluating upstream code.
+          set -eo pipefail
           src="$(/usr/bin/curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh)"
           eval "$src"
 
