@@ -147,7 +147,7 @@ jobs:
               assert meta["CFBundleVersion"] == version, (bundle, meta.get("CFBundleVersion"))
               binary = root / bundle / executable
               assert binary.is_file() and binary.stat().st_size > 0, str(binary)
-              subprocess.run(["lipo", "-verify_arch", "x86_64", str(binary)], check=True)
+              subprocess.run(["lipo", str(binary), "-verify_arch", "x86_64"], check=True)
               print(f"PASS: {bundle} {version} x86_64")
           utb = plistlib.loads((root / "UTBMap.kext/Contents/Info.plist").read_bytes())
           assert utb["CFBundleIdentifier"] == "com.dhinakg.USBToolBox.map"
