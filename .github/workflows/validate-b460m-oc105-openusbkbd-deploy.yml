@@ -1,6 +1,7 @@
 name: Validate OpenCore 1.0.5 OpenUsbKbDxe deployment safety
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - opencore-1.0.5-sequoia-rx570
