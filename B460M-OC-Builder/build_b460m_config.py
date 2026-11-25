@@ -115,6 +115,10 @@ need(kernel, "Quirks").update({
 # Intel UHD 630 is headless; RX 570 remains the display GPU.
 dp = need(cfg, "DeviceProperties")
 dp["Add"] = {
+    # Exact-model ASUS TUF GAMING B460M-PLUS community EFI reports working ALC S1200A audio with layout 1.
+    "PciRoot(0x0)/Pci(0x1F,0x3)": {
+        "layout-id": bytes.fromhex("01000000"),
+    },
     "PciRoot(0x0)/Pci(0x2,0x0)": {
         "AAPL,ig-platform-id": bytes.fromhex("0300C89B"),
     }
