@@ -6,6 +6,8 @@ on:
     paths:
       - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
       - "B460M-OC-Builder/build_b460m_config.py"
+      - "B460M-OC-Builder/Build-B460M-Sequoia-Native-Recovery-USB.ps1"
+      - "B460M-OC-Builder/Test-B460M-Sequoia-USB-ReadOnly.ps1"
       - "UTBMap.kext.rar"
       - ".github/workflows/build-b460m-efi-staging.yml"
 
@@ -28,6 +30,21 @@ jobs:
       - name: Install ACPICA compiler
         run: |
           brew install acpica unar
+
+      - name: Verify USB is created as a real GPT EFI System Partition
+        shell: bash
+        run: |
+          set -euo pipefail
+          builder="B460M-OC-Builder/Build-B460M-Sequoia-Native-Recovery-USB.ps1"
+          validator="B460M-OC-Builder/Test-B460M-Sequoia-USB-ReadOnly.ps1"
+          grep -Fq "'create partition efi size=\$Fat32SizeMB'" "$builder"
+          if grep -Fq "'create partition primary size=\$Fat32SizeMB'" "$builder"; then
+            echo "ERROR: GPT Basic Data partition creation is forbidden for this USB." >&2
+            exit 1
+          fi
+          grep -Fq "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" "$builder"
+          grep -Fq "GptType" "$validator"
+          echo "PASS: builder creates GPT ESP; read-only validator checks ESP GUID"
 
       - name: Prepare EFI directory structure
         shell: bash
