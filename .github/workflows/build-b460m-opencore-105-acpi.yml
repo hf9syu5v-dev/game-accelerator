@@ -1,0 +1,117 @@
+name: Build OpenCore 1.0.5 Sequoia ACPI stage
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-opencore-105-acpi.yml"
+      - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  acpi-stage:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and verify official OpenCore 1.0.5 DEBUG
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o OpenCore-1.0.5-DEBUG.zip https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | shasum -a 256 -c
+          mkdir oc105
+          ditto -x -k OpenCore-1.0.5-DEBUG.zip oc105
+          test -f oc105/X64/EFI/OC/OpenCore.efi
+          test -f oc105/Docs/Sample.plist
+          test -f oc105/Utilities/ocvalidate/ocvalidate
+
+      - name: Install ACPICA tools
+        run: brew install acpica
+
+      - name: Assemble only the board-analyzed ACPI tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staging/EFI/OC/ACPI
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-PLUG-DRTNIA.aml staging/EFI/OC/ACPI/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-EC-USBX-DESKTOP.aml staging/EFI/OC/ACPI/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-AWAC.aml staging/EFI/OC/ACPI/
+          for aml in staging/EFI/OC/ACPI/*.aml; do
+            test -s "$aml"
+            iasl -d "$aml"
+            dsl="${aml%.aml}.dsl"
+            test -s "$dsl"
+            grep -q "DefinitionBlock" "$dsl"
+          done
+          test "$(find staging/EFI/OC/ACPI -maxdepth 1 -name '*.aml' | wc -l | tr -d ' ')" = "3"
+
+      - name: Create config from the matching official Sample.plist
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp oc105/Docs/Sample.plist staging/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path("staging/EFI/OC/config.plist")
+          with p.open("rb") as f:
+              c = plistlib.load(f)
+          c["ACPI"]["Add"] = [
+              {"Comment":"Dortania Comet Lake PLUG SSDT for \\\\_SB.PR00","Enabled":True,"Path":"SSDT-PLUG-DRTNIA.aml","PlistPath":"","MinKernel":"","MaxKernel":""},
+              {"Comment":"Dortania desktop Fake EC and USBX; OEM H_EC retained","Enabled":True,"Path":"SSDT-EC-USBX-DESKTOP.aml","PlistPath":"","MinKernel":"","MaxKernel":""},
+              {"Comment":"Dortania AWAC fix; STAS=1 selects native legacy RTC","Enabled":True,"Path":"SSDT-AWAC.aml","PlistPath":"","MinKernel":"","MaxKernel":""}
+          ]
+          with p.open("wb") as f:
+              plistlib.dump(c, f, fmt=plistlib.FMT_XML, sort_keys=False)
+          with p.open("rb") as f:
+              check=plistlib.load(f)
+          assert len(check["ACPI"]["Add"]) == 3
+          assert all(x["Enabled"] for x in check["ACPI"]["Add"])
+          print("Official Sample.plist retained; exactly three analyzed ACPI entries enabled.")
+          PY
+          chmod +x oc105/Utilities/ocvalidate/ocvalidate
+          oc105/Utilities/ocvalidate/ocvalidate staging/EFI/OC/config.plist
+
+      - name: Verify every enabled ACPI path exists and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root=Path("staging/EFI/OC")
+          c=plistlib.loads((root/"config.plist").read_bytes())
+          for item in c["ACPI"]["Add"]:
+              if item["Enabled"]:
+                  f=root/"ACPI"/item["Path"]
+                  assert f.is_file() and f.stat().st_size > 0, f"Missing ACPI file: {f}"
+          assert len(list((root/"ACPI").glob("*.aml"))) == 3
+          print("ACPI config-to-file cross-check passed.")
+          PY
+          cp oc105/X64/EFI/OC/OpenCore.efi staging/EFI/OC/
+          cp oc105/X64/EFI/OC/OpenRuntime.efi staging/EFI/OC/
+          cp oc105/X64/EFI/BOOT/BOOTx64.efi staging/EFI/BOOTx64.efi
+          mkdir -p staging/EFI/OC/Drivers
+          cp oc105/X64/EFI/OC/Drivers/OpenRuntime.efi staging/EFI/OC/Drivers/
+          cat > staging/BUILD-STATUS.txt <<'EOF'
+          ACPI STAGE ONLY — NOT BOOTABLE.
+          OpenCore 1.0.5 DEBUG official binaries and matching Sample.plist.
+          Three board-analyzed ACPI tables passed ACPICA disassembly checks.
+          config.plist has only the ACPI module populated; other modules remain Sample.plist defaults.
+          No kexts, SMBIOS, DeviceProperties, NVRAM policy, boot arguments, or hardware validation.
+          Do not deploy or boot this artifact.
+          EOF
+
+      - name: Upload ACPI stage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCore-1.0.5-Sequoia-ACPI-STAGE-NOT-BOOTABLE
+          path: staging/
+          if-no-files-found: error
