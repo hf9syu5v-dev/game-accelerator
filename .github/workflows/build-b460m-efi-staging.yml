@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
+      - "B460M-OC-Builder/build_b460m_config.py"
       - ".github/workflows/build-b460m-efi-staging.yml"
 
 permissions:
@@ -122,6 +123,31 @@ jobs:
           done
           ls -lh build/EFI/OC/ACPI
 
+      - name: Build and validate hardware-specific config.plist candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 B460M-OC-Builder/build_b460m_config.py \\
+            build/Tools/OpenCore-1.0.8-Sample.plist \\
+            build/EFI/OC/config.plist \\
+            build/EFI/OC
+          validator="$(find /tmp/opencore -type f -name ocvalidate -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" build/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path("build/EFI/OC/config.plist")
+          with p.open("rb") as f:
+              c = plistlib.load(f)
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          assert c["PlatformInfo"]["Generic"]["SystemSerialNumber"] == "C02J5NYBPN5T"
+          assert len(c["Kernel"]["Add"]) == 6
+          assert len(c["ACPI"]["Add"]) == 4
+          print(f"config.plist parsed: {p.stat().st_size} bytes")
+          PY
+
       - name: Produce staging manifest and safety notice
         shell: bash
         run: |
@@ -133,10 +159,11 @@ jobs:
             echo "- Kexts: Lilu 1.7.2; VirtualSMC 1.3.8; WhateverGreen 1.7.1; AppleALC 1.9.8; IntelMausi 1.0.8; NVMeFix 1.1.3"
             echo "- ACPI: PLUG, EC-USBX, AWAC, and compiled board-specific RHUB"
             echo "- Drivers: OpenRuntime.efi and HfsPlus.efi"
+            echo "- Config: hardware-specific config.plist candidate generated and checked with matching ocvalidate"
             echo "- Status: STAGING ONLY; NOT BOOTABLE"
             echo
-            echo "No config.plist is included. SMBIOS identifiers are intentionally not generated."
-            echo "USB port mapping is not complete. No installer, disk image, or physical EFI write is included."
+            echo "The config.plist is a DEBUG candidate. It contains the user-approved SMBIOS identifiers."
+            echo "USB port mapping and real-hardware testing are not complete. No installer, disk image, or physical EFI write is included."
             echo
             echo "## SHA-256"
             sha256sum build/EFI/BOOT/BOOTx64.efi build/EFI/OC/OpenCore.efi build/EFI/OC/Drivers/*.efi build/EFI/OC/ACPI/*.aml
@@ -147,7 +174,7 @@ jobs:
           Hardware-specific config.plist, SMBIOS setup, OC validation, USB mapping,
           and real-hardware testing are still outstanding.
           EOF
-          test ! -e build/EFI/OC/config.plist
+          test -s build/EFI/OC/config.plist
 
       - name: Upload staging artifact
         uses: actions/upload-artifact@v4
