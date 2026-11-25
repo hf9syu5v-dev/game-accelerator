@@ -20,19 +20,21 @@ def need(mapping, key):
         raise SystemExit(f"Missing expected Sample.plist key: {key}")
     return mapping[key]
 
-# SMBIOS values supplied by the user for this build.
+# Keep only the selected SMBIOS model. The previously used serial/MLB/ROM/UUID
+# were exposed in public Git history and must not be reused. Fresh values are
+# generated locally on the target PC and applied after this staging build.
 generic = need(need(cfg, "PlatformInfo"), "Generic")
 generic.update({
     "AdviseFeatures": True,
     "MaxBIOSVersion": False,
-    "MLB": "C02231609GUPHC1JC",
+    "MLB": "",
     "ProcessorType": 0,
-    "ROM": bytes.fromhex("3c7c3fd77ee8"),
+    "ROM": b"",
     "SpoofVendor": True,
     "SystemMemoryStatus": "Auto",
     "SystemProductName": "iMac20,1",
-    "SystemSerialNumber": "C02J5NYBPN5T",
-    "SystemUUID": "78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6",
+    "SystemSerialNumber": "",
+    "SystemUUID": "",
 })
 need(cfg, "PlatformInfo").update({
     "Automatic": True,
@@ -118,20 +120,21 @@ dp["Delete"] = {}
 # Conservative Booter baseline for modern UEFI; no MMIO map guesswork.
 need(cfg, "Booter")["Quirks"].update({
     "AvoidRuntimeDefrag": True,
-    "DevirtualiseMmio": False,
+    "DevirtualiseMmio": True,
     "EnableSafeModeSlide": True,
     "EnableWriteUnprotector": False,
     "ProvideCustomSlide": True,
     "RebuildAppleMemoryMap": True,
     "ResizeAppleGpuBars": -1,
-    "SetupVirtualMap": True,
+    "SetupVirtualMap": False,
     "SyncRuntimePermissions": True,
+    "ProtectUefiServices": True,
 })
 
-# NVRAM: verbose diagnostic boot and ALC layout 3 as a first-pass candidate.
+# NVRAM: verbose diagnostic boot. Leave ALC layout unset until board-level testing.
 nvram = need(cfg, "NVRAM")
 nvram["Add"].setdefault("7C436110-AB2A-4BBB-A880-FE41995C9F82", {}).update({
-    "boot-args": "-v keepsyms=1 debug=0x100 alcid=3",
+    "boot-args": "-v keepsyms=1 debug=0x100",
     "csr-active-config": bytes.fromhex("00000000"),
     "prev-lang:kbd": bytes.fromhex("656e2d55533a30"),
 })
