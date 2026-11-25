@@ -1,0 +1,188 @@
+name: Build OpenCore 1.0.5 Sequoia kext stage
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-opencore-105-kexts.yml"
+      - "UTBMap.kext/Contents/Info.plist"
+      - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kext-stage:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download official pinned RELEASE assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads extracted staging/EFI/BOOT staging/EFI/OC/ACPI staging/EFI/OC/Kexts staging/EFI/OC/Drivers
+          download_release() {
+            local repo="$1" tag="$2" asset="$3"
+            local api="https://api.github.com/repos/${repo}/releases/tags/${tag}"
+            local url
+            url="$(curl -fsSL "$api" | python3 -c 'import json,sys; d=json.load(sys.stdin); n=sys.argv[1]; a=[x["browser_download_url"] for x in d["assets"] if x["name"]==n]; assert len(a)==1, (n,a); print(a[0])' "$asset")"
+            curl -fL --retry 3 "$url" -o "downloads/$asset"
+            unzip -q "downloads/$asset" -d "extracted/${asset%.zip}"
+            echo "Downloaded pinned official asset: ${repo}@${tag}/${asset}"
+          }
+          download_release acidanthera/Lilu 1.7.2 Lilu-1.7.2-RELEASE.zip
+          download_release acidanthera/VirtualSMC 1.3.8 VirtualSMC-1.3.8-RELEASE.zip
+          download_release acidanthera/WhateverGreen 1.7.1 WhateverGreen-1.7.1-RELEASE.zip
+          download_release acidanthera/AppleALC 1.9.8 AppleALC-1.9.8-RELEASE.zip
+          download_release acidanthera/IntelMausi 1.0.8 IntelMausi-1.0.8-RELEASE.zip
+          download_release acidanthera/NVMeFix 1.1.3 NVMeFix-1.1.3-RELEASE.zip
+          download_release USBToolBox/kext 1.2.0 USBToolBox-1.2.0-RELEASE.zip
+
+      - name: Assemble kext bundles and verify bundle metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, shutil
+          from pathlib import Path
+          root=Path("extracted")
+          dest=Path("staging/EFI/OC/Kexts")
+          expected=["Lilu","VirtualSMC","WhateverGreen","AppleALC","IntelMausi","NVMeFix","USBToolBox"]
+          for name in expected:
+              matches=list(root.glob(f"**/{name}.kext"))
+              assert len(matches)==1, (name, [str(x) for x in matches])
+              shutil.copytree(matches[0],dest/f"{name}.kext")
+              info=plistlib.loads((dest/f"{name}.kext/Contents/Info.plist").read_bytes())
+              assert info.get("CFBundlePackageType")=="KEXT", name
+              assert info.get("CFBundleExecutable"), (name,"missing executable")
+              exe=dest/f"{name}.kext/Contents/MacOS"/info["CFBundleExecutable"]
+              assert exe.is_file() and exe.stat().st_size>0, (name,str(exe))
+              print(name, info.get("CFBundleShortVersionString"), info.get("CFBundleIdentifier"))
+          # The user-supplied UTBMap is a codeless map bundle; no executable is expected.
+          src=Path("UTBMap.kext/Contents/Info.plist")
+          info=plistlib.loads(src.read_bytes())
+          assert info["CFBundleIdentifier"]=="com.dhinakg.USBToolBox.map"
+          assert info["CFBundlePackageType"]=="KEXT"
+          assert info["CFBundleVersion"]=="1.1"
+          target=dest/"UTBMap.kext/Contents"
+          target.mkdir(parents=True)
+          shutil.copy2(src,target/"Info.plist")
+          assert not info.get("CFBundleExecutable")
+          ports=info["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert len(ports)==11, len(ports)
+          indices=[]
+          for key,entry in ports.items():
+              raw=entry["port"]
+              assert len(raw)==4
+              indices.append(int.from_bytes(raw,"little"))
+          assert len(indices)==len(set(indices)), indices
+          assert max(indices)<=20, indices
+          print("UTBMap 1.1: 11 codeless port mappings; indices", sorted(indices))
+          PY
+
+      - name: Assemble board-analyzed ACPI and official OpenCore 1.0.5 files
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o OpenCore-1.0.5-DEBUG.zip https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | shasum -a 256 -c
+          mkdir oc105
+          ditto -x -k OpenCore-1.0.5-DEBUG.zip oc105
+          cp oc105/Docs/Sample.plist staging/EFI/OC/config.plist
+          cp oc105/X64/EFI/OC/OpenCore.efi staging/EFI/OC/
+          cp oc105/X64/EFI/BOOT/BOOTx64.efi staging/EFI/BOOT/
+          cp oc105/X64/EFI/OC/Drivers/OpenRuntime.efi staging/EFI/OC/Drivers/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-PLUG-DRTNIA.aml staging/EFI/OC/ACPI/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-EC-USBX-DESKTOP.aml staging/EFI/OC/ACPI/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-AWAC.aml staging/EFI/OC/ACPI/
+          brew install acpica
+          for aml in staging/EFI/OC/ACPI/*.aml; do iasl -d "$aml"; done
+
+      - name: Generate Kernel Add and ACPI Add from actual bundle contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root=Path("staging/EFI/OC")
+          p=root/"config.plist"
+          c=plistlib.loads(p.read_bytes())
+          order=["Lilu","VirtualSMC","WhateverGreen","AppleALC","IntelMausi","NVMeFix","USBToolBox","UTBMap"]
+          add=[]
+          for name in order:
+              bundle=root/"Kexts"/f"{name}.kext"
+              info=plistlib.loads((bundle/"Contents/Info.plist").read_bytes())
+              exe=info.get("CFBundleExecutable","")
+              add.append({
+                  "Arch":"Any",
+                  "BundlePath":f"{name}.kext",
+                  "Comment":f"{name} {info.get('CFBundleShortVersionString',info.get('CFBundleVersion',''))}",
+                  "Enabled":True,
+                  "ExecutablePath":f"Contents/MacOS/{exe}" if exe else "",
+                  "MaxKernel":"",
+                  "MinKernel":"",
+                  "PlistPath":"Contents/Info.plist"
+              })
+          c["Kernel"]["Add"]=add
+          c["ACPI"]["Add"]=[
+              {"Comment":"Dortania Comet Lake PLUG SSDT for \\\\_SB.PR00","Enabled":True,"Path":"SSDT-PLUG-DRTNIA.aml"},
+              {"Comment":"Dortania desktop Fake EC and USBX; OEM H_EC retained","Enabled":True,"Path":"SSDT-EC-USBX-DESKTOP.aml"},
+              {"Comment":"Dortania AWAC fix; STAS=1 selects native legacy RTC","Enabled":True,"Path":"SSDT-AWAC.aml"}
+          ]
+          p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
+          print("Kernel Add order:", " -> ".join(order))
+          PY
+          chmod +x oc105/Utilities/ocvalidate/ocvalidate
+          oc105/Utilities/ocvalidate/ocvalidate staging/EFI/OC/config.plist
+
+      - name: Strict cross-check config paths, dependency order and package contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root=Path("staging/EFI/OC")
+          c=plistlib.loads((root/"config.plist").read_bytes())
+          ids=[]
+          for item in c["Kernel"]["Add"]:
+              assert item["Enabled"] is True
+              bundle=root/"Kexts"/item["BundlePath"]
+              assert bundle.is_dir(), bundle
+              info=plistlib.loads((bundle/"Contents/Info.plist").read_bytes())
+              assert item["PlistPath"]=="Contents/Info.plist"
+              if item["ExecutablePath"]:
+                  assert (bundle/item["ExecutablePath"]).is_file(), item
+              ids.append(info["CFBundleIdentifier"])
+          assert len(ids)==8 and len(ids)==len(set(ids)), ids
+          expected=["Lilu.kext","VirtualSMC.kext","WhateverGreen.kext","AppleALC.kext","IntelMausi.kext","NVMeFix.kext","USBToolBox.kext","UTBMap.kext"]
+          assert [x["BundlePath"] for x in c["Kernel"]["Add"]]==expected
+          for item in c["ACPI"]["Add"]:
+              assert (root/"ACPI"/item["Path"]).is_file()
+          for f in ["OpenCore.efi","Drivers/OpenRuntime.efi"]:
+              assert (root/f).is_file(), f
+          assert Path("staging/EFI/BOOT/BOOTx64.efi").is_file()
+          print("Kext/ACPI/driver path and load-order cross-check passed.")
+          PY
+          cat > staging/BUILD-STATUS.txt <<'EOF'
+          KEXT + ACPI STAGE — NOT BOOTABLE.
+          Official OpenCore 1.0.5 DEBUG binaries and matching Sample.plist.
+          Official pinned RELEASE kext bundles; Kernel Add generated from each bundle's Info.plist.
+          User-supplied codeless UTBMap 1.1 integrated after USBToolBox.
+          Three analyzed ACPI tables included and disassembled by ACPICA.
+          Remaining OpenCore sections retain Sample.plist defaults. SMBIOS and hardware-specific
+          DeviceProperties/NVRAM/Booter/UEFI/Kernel quirks have not yet been configured or verified.
+          Do not deploy or boot this artifact.
+          EOF
+
+      - name: Upload kext stage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCore-1.0.5-Sequoia-KEXT-ACPI-STAGE-NOT-BOOTABLE
+          path: staging/
+          if-no-files-found: error
