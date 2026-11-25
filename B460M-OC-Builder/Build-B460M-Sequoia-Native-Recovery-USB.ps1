@@ -39,7 +39,21 @@ if (!(Test-Path -LiteralPath $EfiZip -PathType Leaf)) { Stop-Setup "EFI_ZIP_NOT_
 $efiHash = Get-Sha256 $EfiZip
 if ($efiHash -ne $EfiZipSha256) { Stop-Setup "EFI_ZIP_SHA256_MISMATCH: $efiHash" }
 $py = Get-Command py.exe -ErrorAction SilentlyContinue
-if (!$py) { Stop-Setup 'PYTHON_LAUNCHER_NOT_FOUND: install Python 3 from python.org with the Python Launcher, then rerun. USB was not changed.' }
+$pythonArgs = @()
+if ($py) {
+    $pythonExe = $py.Source
+    $pythonArgs = @('-3')
+} else {
+    $python = Get-Command python.exe -ErrorAction SilentlyContinue
+    if (!$python) { $python = Get-Command python3.exe -ErrorAction SilentlyContinue }
+    if (!$python) { Stop-Setup 'PYTHON3_NOT_FOUND: install Python 3, or add python.exe to PATH. USB was not changed.' }
+    $pythonExe = $python.Source
+}
+$pythonVersion = & $pythonExe @pythonArgs --version 2>&1
+if ($LASTEXITCODE -ne 0 -or ($pythonVersion -notmatch '^Python 3\.[0-9]+')) {
+    Stop-Setup ("PYTHON3_CHECK_FAILED: " + ($pythonVersion -join ' ') + ". Install Python 3 and ensure it is on PATH. USB was not changed.")
+}
+Write-Host ("PYTHON_OK: " + ($pythonVersion -join ' ')) -ForegroundColor Green
 
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 try {
@@ -71,7 +85,7 @@ try {
     New-Item -ItemType Directory -Path $recoveryDir -Force | Out-Null
     Push-Location (Split-Path $macrec -Parent)
     try {
-        & $py.Source -3 $macrec -b $SequoiaBoardId -m 00000000000000000 -o $recoveryDir download
+        & $pythonExe @pythonArgs $macrec -b $SequoiaBoardId -m 00000000000000000 -o $recoveryDir download
         if ($LASTEXITCODE -ne 0) { Stop-Setup "MACRECOVERY_FAILED_EXIT=$LASTEXITCODE" }
     } finally { Pop-Location }
     $dmg = Join-Path $recoveryDir 'BaseSystem.dmg'
