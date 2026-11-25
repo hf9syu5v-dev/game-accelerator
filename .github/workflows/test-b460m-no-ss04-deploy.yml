@@ -47,30 +47,40 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $vhd = Join-Path $env:TEMP 'no-ss04-esp-test.vhdx'
           $dp = Join-Path $env:TEMP 'no-ss04-esp-test.txt'
-          @(
-            "create vdisk file=`"$vhd`" maximum=128 type=expandable"
-            "select vdisk file=`"$vhd`""
-            "attach vdisk"
-            "convert gpt"
-            "create partition efi size=100"
-            "format fs=fat32 quick label=ESPTEST"
-            "assign letter=R"
-          ) | Set-Content -Path $dp -Encoding ASCII
+          $attached = $false
           try {
+            @(
+              "create vdisk file=`"$vhd`" maximum=128 type=expandable"
+              "select vdisk file=`"$vhd`""
+              "attach vdisk"
+              "convert gpt"
+              "create partition efi size=100"
+              "format fs=fat32 quick label=ESPTEST"
+            ) | Set-Content -Path $dp -Encoding ASCII
             diskpart /s $dp
-            $part = Get-Partition -DriveLetter R -ErrorAction Stop
-            if ($part.GptType.Trim('{}').ToLowerInvariant() -ne 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b') { throw 'VHD partition is not ESP type' }
-            Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'R:\' -ErrorAction Stop
-            Add-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'Z:\' -ErrorAction Stop
-            if (-not (Test-Path 'Z:\')) { throw 'Real Storage API did not mount VHD ESP at Z:\' }
-            Set-Content 'Z:\mount-probe.txt' 'real-storage-api-ok'
-            if ((Get-Content 'Z:\mount-probe.txt' -Raw).Trim() -ne 'real-storage-api-ok') { throw 'VHD mounted path read/write failed' }
-            Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'Z:\' -ErrorAction Stop
+            $attached = $true
+            $image = Get-DiskImage -ImagePath $vhd -ErrorAction Stop
+            $vdisk = $image | Get-Disk -ErrorAction Stop
+            $parts = @(Get-Partition -DiskNumber $vdisk.Number -ErrorAction Stop | Where-Object { $_.GptType.Trim('{}').ToLowerInvariant() -eq 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' })
+            if ($parts.Count -ne 1) { throw "Expected one ESP on test VHD; found $($parts.Count)" }
+            $part = $parts[0]
+            if ($part.Size -lt 90MB) { throw 'VHD ESP size is unexpectedly small' }
             Add-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'R:\' -ErrorAction Stop
+            if (-not (Test-Path 'R:\')) { throw 'Real Storage API failed to mount ESP at R:\' }
+            Set-Content 'R:\mount-probe.txt' 'real-storage-api-ok'
+            if ((Get-Content 'R:\mount-probe.txt' -Raw).Trim() -ne 'real-storage-api-ok') { throw 'VHD mounted path read/write failed' }
+            Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'R:\' -ErrorAction Stop
+            if (Test-Path 'R:\') { throw 'ESP drive letter remained after unmount' }
+            Add-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'Z:\' -ErrorAction Stop
+            if (-not (Test-Path 'Z:\mount-probe.txt')) { throw 'Real Storage API failed to remount ESP at Z:\' }
+            if ((Get-Content 'Z:\mount-probe.txt' -Raw).Trim() -ne 'real-storage-api-ok') { throw 'ESP data did not persist across remount' }
+            Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'Z:\' -ErrorAction Stop
             Write-Host 'REAL_STORAGE_ESP_MOUNT_UNMOUNT=PASS'
           } finally {
-            @("select vdisk file=`"$vhd`"","detach vdisk") | Set-Content -Path $dp -Encoding ASCII
-            diskpart /s $dp | Out-Null
+            if ($attached) {
+              @("select vdisk file=`"$vhd`"","detach vdisk") | Set-Content -Path $dp -Encoding ASCII
+              diskpart /s $dp | Out-Null
+            }
             Remove-Item $vhd,$dp -Force -ErrorAction SilentlyContinue
           }
 
