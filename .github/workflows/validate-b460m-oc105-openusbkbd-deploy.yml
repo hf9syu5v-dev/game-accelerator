@@ -1,0 +1,47 @@
+name: Validate OpenCore 1.0.5 OpenUsbKbDxe deployment safety
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.py"
+      - "B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.ps1"
+      - ".github/workflows/validate-b460m-oc105-openusbkbd-deploy.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Windows PowerShell 5.1 parser validation
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=(Resolve-Path 'B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.ps1').Path
+          $t=$null; $e=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($p,[ref]$t,[ref]$e) | Out-Null
+          if ($e.Count) { $e | Format-List | Out-String | Write-Error }
+          'POWERSHELL_5_1_PARSE=PASS'
+      - name: Python syntax and safety-boundary audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.py'
+          $s=Get-Content -LiteralPath $p -Raw
+          python -m py_compile $p
+          foreach($x in @('000000123ADC','LITEON I T LCS-128L9S','128035676160','Get-Partition','Get-Disk','IsBoot','IsSystem','com.apple.recovery.boot','BaseSystem.dmg','BaseSystem.chunklist','KeySupport','OpenUsbKbDxe.efi','EXPECTED_SHA256','EFI-PREVIOUS-OPENUSBKBD105')) {
+            if (!$s.Contains($x)) { throw "Missing required guard: $x" }
+          }
+          foreach($x in @('Clear-Disk','Initialize-Disk','New-Partition','Remove-Partition','Format-Volume','Set-Partition','Set-Disk','diskpart','clean all')) {
+            if ($s.Contains($x)) { throw "Forbidden destructive operation token: $x" }
+          }
+          'PYTHON_SYNTAX=PASS'
+          'USB_IDENTITY_AND_RECOVERY_GUARDS=PASS'
+          'NO_PARTITION_OR_FORMAT_OPERATIONS=PASS'
