@@ -1,0 +1,299 @@
+name: Build OpenCore 1.0.5 Sequoia configuration stage
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-opencore-105-config.yml"
+      - "B460M-OC-Builder/Apply-B460M-Local-SMBIOS.ps1"
+      - "B460M-OC-Builder/Generate-B460M-SMBIOS-Values.ps1"
+      - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
+      - "UTBMap.kext/Contents/Info.plist"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  config-stage:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download pinned official kext RELEASE assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads extracted staging/EFI/BOOT staging/EFI/OC/ACPI staging/EFI/OC/Kexts staging/EFI/OC/Drivers
+          download_release() {
+            local url="$1" asset="$2"
+            curl -fL --retry 3 "$url" -o "downloads/$asset"
+            unzip -q "downloads/$asset" -d "extracted/${asset%.zip}"
+          }
+          download_release https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip Lilu-1.7.2-RELEASE.zip
+          download_release https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip VirtualSMC-1.3.8-RELEASE.zip
+          download_release https://github.com/acidanthera/WhateverGreen/releases/download/1.7.1/WhateverGreen-1.7.1-RELEASE.zip WhateverGreen-1.7.1-RELEASE.zip
+          download_release https://github.com/acidanthera/AppleALC/releases/download/1.9.8/AppleALC-1.9.8-RELEASE.zip AppleALC-1.9.8-RELEASE.zip
+          download_release https://github.com/acidanthera/IntelMausi/releases/download/1.0.8/IntelMausi-1.0.8-RELEASE.zip IntelMausi-1.0.8-RELEASE.zip
+          download_release https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip NVMeFix-1.1.3-RELEASE.zip
+          download_release https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip USBToolBox-1.2.0-RELEASE.zip
+          python3 - <<'PY'
+          import plistlib, shutil
+          from pathlib import Path
+          root=Path("extracted"); dest=Path("staging/EFI/OC/Kexts")
+          for name in ["Lilu","VirtualSMC","WhateverGreen","AppleALC","IntelMausi","NVMeFix","USBToolBox"]:
+              matches=list(root.glob(f"**/{name}.kext"))
+              assert len(matches)==1, (name,[str(x) for x in matches])
+              shutil.copytree(matches[0],dest/f"{name}.kext")
+              info=plistlib.loads((dest/f"{name}.kext/Contents/Info.plist").read_bytes())
+              exe=info.get("CFBundleExecutable")
+              assert info.get("CFBundlePackageType")=="KEXT" and exe
+              assert (dest/f"{name}.kext/Contents/MacOS"/exe).is_file()
+              print(name,info.get("CFBundleShortVersionString"),info.get("CFBundleIdentifier"))
+          info=plistlib.loads(Path("UTBMap.kext/Contents/Info.plist").read_bytes())
+          assert info["CFBundleIdentifier"]=="com.dhinakg.USBToolBox.map" and info["CFBundleVersion"]=="1.1"
+          assert len(info["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"])==11
+          p=dest/"UTBMap.kext/Contents";p.mkdir(parents=True)
+          shutil.copy2("UTBMap.kext/Contents/Info.plist",p/"Info.plist")
+          print("UTBMap 1.1 verified as codeless, 11-port map.")
+          PY
+
+      - name: Download OpenCore 1.0.5 and pinned HfsPlus driver
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 -o OpenCore-1.0.5-DEBUG.zip https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | shasum -a 256 -c
+          mkdir oc105
+          ditto -x -k OpenCore-1.0.5-DEBUG.zip oc105
+          cp oc105/Docs/Sample.plist staging/EFI/OC/config.plist
+          cp oc105/X64/EFI/OC/OpenCore.efi staging/EFI/OC/
+          cp oc105/X64/EFI/BOOT/BOOTx64.efi staging/EFI/BOOT/
+          cp oc105/X64/EFI/OC/Drivers/OpenRuntime.efi staging/EFI/OC/Drivers/
+          curl -fL --retry 3 https://raw.githubusercontent.com/acidanthera/OcBinaryData/640e7e9240938f2529e725351e1e1150dc3569db/Drivers/HfsPlus.efi -o staging/EFI/OC/Drivers/HfsPlus.efi
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("staging/EFI/OC/Drivers/HfsPlus.efi")
+          b=p.read_bytes()
+          assert len(b)>30000 and b[:2]==b"MZ"
+          pe=int.from_bytes(b[0x3c:0x40],"little")
+          assert b[pe:pe+4]==b"PE\0\0"
+          assert int.from_bytes(b[pe+4:pe+6],"little")==0x8664
+          print("Pinned OcBinaryData HfsPlus.efi verified as x86_64 PE/COFF; SHA256:",__import__("hashlib").sha256(b).hexdigest())
+          PY
+
+      - name: Add analyzed ACPI and disassemble AML
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-PLUG-DRTNIA.aml staging/EFI/OC/ACPI/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-EC-USBX-DESKTOP.aml staging/EFI/OC/ACPI/
+          cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-AWAC.aml staging/EFI/OC/ACPI/
+          brew install acpica
+          for aml in staging/EFI/OC/ACPI/*.aml; do iasl -d "$aml"; done
+
+      - name: Configure Comet Lake sections from Dortania guide
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p=Path("staging/EFI/OC/config.plist")
+          c=plistlib.loads(p.read_bytes())
+
+          # ACPI: board-specific tables already statically analyzed from the user's DSDT.
+          c["ACPI"]["Add"]=[
+            {"Comment":"Dortania Comet Lake PLUG SSDT for \\\\_SB.PR00","Enabled":True,"Path":"SSDT-PLUG-DRTNIA.aml"},
+            {"Comment":"Dortania desktop Fake EC and USBX; OEM H_EC retained","Enabled":True,"Path":"SSDT-EC-USBX-DESKTOP.aml"},
+            {"Comment":"Dortania AWAC fix; STAS=1 selects native legacy RTC","Enabled":True,"Path":"SSDT-AWAC.aml"}
+          ]
+
+          # Booter quirks: Dortania Desktop Comet Lake values.
+          b=c["Booter"]["Quirks"]
+          for k,v in {
+            "AvoidRuntimeDefrag":True,
+            "DevirtualiseMmio":True,
+            "EnableSafeModeSlide":True,
+            "EnableWriteUnprotector":False,
+            "ProtectUefiServices":True,
+            "ProvideCustomSlide":True,
+            "RebuildAppleMemoryMap":True,
+            "ResizeAppleGpuBars":-1,
+            "SetupVirtualMap":False,
+            "SyncRuntimePermissions":True
+          }.items(): b[k]=v
+
+          # DeviceProperties: headless UHD 630 (dGPU drives the display) and exact-board ALC S1200A layout 1.
+          c["DeviceProperties"]["Add"]={
+            "PciRoot(0x0)/Pci(0x2,0x0)":{
+              "AAPL,ig-platform-id":bytes.fromhex("0300C89B")
+            },
+            "PciRoot(0x0)/Pci(0x1F,0x3)":{
+              "layout-id":bytes.fromhex("01000000")
+            }
+          }
+
+          # Kernel quirks: no CPU spoof; Comet Lake S is natively supported by Sequoia.
+          k=c["Kernel"]["Quirks"]
+          for key,value in {
+            "AppleCpuPmCfgLock":False,
+            "AppleXcpmCfgLock":True,
+            "DisableIoMapper":False,
+            "DisableLinkeditJettison":True,
+            "PanicNoKextDump":True,
+            "PowerTimeoutKernelPanic":True,
+            "XhciPortLimit":False
+          }.items(): k[key]=value
+
+          # Kernel Add: build entries from the actual extracted bundle metadata and preserve dependency order.
+          order=["Lilu","VirtualSMC","WhateverGreen","AppleALC","IntelMausi","NVMeFix","USBToolBox","UTBMap"]
+          add=[]
+          for name in order:
+            bundle=Path("staging/EFI/OC/Kexts")/f"{name}.kext"
+            info=plistlib.loads((bundle/"Contents/Info.plist").read_bytes())
+            exe=info.get("CFBundleExecutable","")
+            add.append({
+              "Arch":"Any","BundlePath":f"{name}.kext",
+              "Comment":f"{name} {info.get('CFBundleShortVersionString',info.get('CFBundleVersion',''))}",
+              "Enabled":True,
+              "ExecutablePath":f"Contents/MacOS/{exe}" if exe else "",
+              "MaxKernel":"","MinKernel":"","PlistPath":"Contents/Info.plist"
+            })
+          c["Kernel"]["Add"]=add
+
+          # Misc: Dortania Comet Lake debug/boot/security recommendations.
+          c["Misc"]["Boot"]["HideAuxiliary"]=True
+          for key,value in {"AppleDebug":True,"ApplePanic":True,"DisableWatchDog":True,"Target":67}.items():
+            c["Misc"]["Debug"][key]=value
+          for key,value in {
+            "AllowSetDefault":True,
+            "BlacklistAppleUpdate":True,
+            "DmgLoading":"Signed",
+            "ScanPolicy":0,
+            "SecureBootModel":"Default",
+            "Vault":"Optional"
+          }.items(): c["Misc"]["Security"][key]=value
+
+          # NVRAM: verbose diagnostic boot, SIP enabled, Apple firmware updater disabled.
+          guid="7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          nv=c["NVRAM"]["Add"].setdefault(guid,{})
+          nv["boot-args"]="-v keepsyms=1 debug=0x100"
+          nv["csr-active-config"]=bytes.fromhex("00000000")
+          nv["run-efi-updater"]="No"
+          nv["prev-lang:kbd"]="en-US:0"
+          c["NVRAM"]["WriteFlash"]=True
+
+          # PlatformInfo: public artifact deliberately contains only explicit placeholders.
+          # Real user SMBIOS values are inserted locally after download, never committed/uploaded.
+          g=c["PlatformInfo"]["Generic"]
+          for key,value in {
+            "AdviseFeatures":False,
+            "MaxBIOSVersion":False,
+            "ProcessorType":0,
+            "SpoofVendor":True,
+            "SystemMemoryStatus":"Auto",
+            "SystemProductName":"iMac20,1",
+            "SystemSerialNumber":"LOCAL0000000",
+            "MLB":"LOCAL000000000000",
+            "SystemUUID":"00000000-0000-0000-0000-000000000000",
+            "ROM":bytes.fromhex("000000000000"),
+            "UpdateDataHub":True,
+            "UpdateNVRAM":True,
+            "UpdateSMBIOS":True,
+            "UpdateSMBIOSMode":"Create"
+          }.items(): g[key]=value
+          c["PlatformInfo"]["Automatic"]=True
+
+          # UEFI: only the two Dortania-recommended drivers; preserve Sample.plist defaults elsewhere.
+          c["UEFI"]["ConnectDrivers"]=True
+          c["UEFI"]["Drivers"]=[
+            {"Arguments":"","Comment":"HFS filesystem support","Enabled":True,"LoadEarly":False,"Path":"HfsPlus.efi"},
+            {"Arguments":"","Comment":"OpenCore runtime services","Enabled":True,"LoadEarly":False,"Path":"OpenRuntime.efi"}
+          ]
+          c["UEFI"]["Quirks"]["RequestBootVarRouting"]=True
+          c["UEFI"]["Quirks"]["UnblockFsConnect"]=False
+
+          p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
+          print("Configured ACPI, Booter, DeviceProperties, Kernel, Misc, NVRAM, PlatformInfo, UEFI.")
+          print("No SMBIOS serial, MLB, UUID or actual ROM values included.")
+          PY
+          cp B460M-OC-Builder/Generate-B460M-SMBIOS-Values.ps1 staging/
+          cp B460M-OC-Builder/Apply-B460M-Local-SMBIOS.ps1 staging/
+          cat > staging/LOCAL-SMBIOS-README.txt <<'EOF'
+          IMPORTANT — PRIVATE LOCAL STEP
+          This build deliberately does not contain your real or temporary SMBIOS identifiers.
+          1. Extract the artifact to a normal folder on Windows; do not copy it to the physical EFI partition yet.
+          2. Run Generate-B460M-SMBIOS-Values.ps1 and enter the matching iMac20,1 values locally.
+             The helper derives ROM from the target board's Intel I219-V MAC.
+          3. Run Apply-B460M-Local-SMBIOS.ps1 from this extracted folder.
+          4. The script patches only this extracted EFI/OC/config.plist and verifies the values.
+          No serial/MLB/UUID/ROM values are uploaded to GitHub or included in Actions artifacts.
+          EOF
+
+      - name: Validate with matching OpenCore 1.0.5 ocvalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x oc105/Utilities/ocvalidate/ocvalidate
+          oc105/Utilities/ocvalidate/ocvalidate staging/EFI/OC/config.plist
+
+      - name: Strict schema, file, hardware-policy and privacy assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib,re
+          from pathlib import Path
+          root=Path("staging/EFI")
+          oc=root/"OC"
+          c=plistlib.loads((oc/"config.plist").read_bytes())
+          assert [x["Path"] for x in c["ACPI"]["Add"]]==["SSDT-PLUG-DRTNIA.aml","SSDT-EC-USBX-DESKTOP.aml","SSDT-AWAC.aml"]
+          assert len(c["Kernel"]["Add"])==8
+          assert [x["BundlePath"] for x in c["Kernel"]["Add"]]==["Lilu.kext","VirtualSMC.kext","WhateverGreen.kext","AppleALC.kext","IntelMausi.kext","NVMeFix.kext","USBToolBox.kext","UTBMap.kext"]
+          for x in c["Kernel"]["Add"]:
+            b=oc/"Kexts"/x["BundlePath"]
+            assert b.is_dir() and (b/"Contents/Info.plist").is_file()
+            if x["ExecutablePath"]: assert (b/x["ExecutablePath"]).is_file()
+          for x in c["ACPI"]["Add"]: assert (oc/"ACPI"/x["Path"]).is_file()
+          for x in c["UEFI"]["Drivers"]: assert x["Enabled"] and (oc/"Drivers"/x["Path"]).is_file()
+          assert (root/"BOOT/BOOTx64.efi").is_file() and (oc/"OpenCore.efi").is_file()
+          assert c["Booter"]["Quirks"]["SetupVirtualMap"] is False
+          assert c["Booter"]["Quirks"]["ResizeAppleGpuBars"]==-1
+          assert c["Kernel"]["Quirks"]["XhciPortLimit"] is False
+          assert c["Kernel"]["Quirks"]["DisableIoMapper"] is False
+          assert c["Kernel"]["Emulate"]["Cpuid1Data"]==b"" and c["Kernel"]["Emulate"]["Cpuid1Mask"]==b""
+          assert "agdpmod=pikera" not in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
+          assert "-wegnoegpu" not in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
+          g=c["PlatformInfo"]["Generic"]
+          assert g["SystemProductName"]=="iMac20,1"
+          assert g["SystemSerialNumber"]=="LOCAL0000000"
+          assert g["MLB"]=="LOCAL000000000000"
+          assert g["SystemUUID"]=="00000000-0000-0000-0000-000000000000"
+          assert g["ROM"]==bytes.fromhex("000000000000")
+          # No real SMBIOS values may be present in tracked source or build artifacts.
+          for f in Path("staging").rglob("*"):
+            if f.is_file() and f.suffix.lower() not in [".efi",".kext",".aml"]:
+              data=f.read_bytes()
+              assert b"C02J5NYBPN5T" not in data and b"C02231609GUPHC1JC" not in data
+              assert b"78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6" not in data
+          print("OpenCore 1.0.5 config schema, all file references, Comet Lake policies, and SMBIOS privacy checks passed.")
+          PY
+          cat > staging/BUILD-STATUS.txt <<'EOF'
+          CONFIGURATION STAGE — structurally complete, not yet boot-ready.
+          Built from official OpenCore 1.0.5 DEBUG Sample.plist and validated by matching ocvalidate.
+          Includes the board-analyzed ACPI set, pinned official RELEASE kexts, HfsPlus and OpenRuntime.
+          Dortania Desktop Comet Lake config values applied for Sequoia.
+          SMBIOS identifiers are intentional local placeholders; run the included local scripts before boot.
+          USB port map is staged but physical port-by-port behavior is not hardware-verified.
+          No EFI partition or user disk was accessed.
+          EOF
+
+      - name: Upload configured EFI stage
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCore-1.0.5-Sequoia-CONFIGURED-EFI-STAGE-LOCAL-SMBIOS-REQUIRED
+          path: staging/
+          if-no-files-found: error
