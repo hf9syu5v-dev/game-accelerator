@@ -64,8 +64,8 @@ jobs:
           with p.open("rb") as f:
               c = plistlib.load(f)
           c["ACPI"]["Add"] = [
-              {"Comment":"Dortania Comet Lake PLUG SSDT for \\\\_SB.PR00","Enabled":True,"Path":"SSDT-PLUG-DRTNIA.aml","PlistPath":"","MinKernel":"","MaxKernel":""},
-              {"Comment":"Dortania desktop Fake EC and USBX; OEM H_EC retained","Enabled":True,"Path":"SSDT-EC-USBX-DESKTOP.aml","PlistPath":"","MinKernel":"","MaxKernel":""},
+              {"Comment":"Dortania Comet Lake PLUG SSDT for \\\\_SB.PR00","Enabled":True,"Path":"SSDT-PLUG-DRTNIA.aml"},
+              {"Comment":"Dortania desktop Fake EC and USBX; OEM H_EC retained","Enabled":True,"Path":"SSDT-EC-USBX-DESKTOP.aml"},
               {"Comment":"Dortania AWAC fix; STAS=1 selects native legacy RTC","Enabled":True,"Path":"SSDT-AWAC.aml","PlistPath":"","MinKernel":"","MaxKernel":""}
           ]
           with p.open("wb") as f:
