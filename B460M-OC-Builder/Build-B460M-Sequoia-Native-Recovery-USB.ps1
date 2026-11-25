@@ -10,6 +10,7 @@ $DiskSizeMin = 115GB
 $DiskSizeMax = 125GB
 $TargetLetter = 'E'
 $Fat32SizeMB = 16000
+$EspGuid = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 $EfiZip = 'C:\temp\B460M-OpenCore-1.0.8-DEBUG-USB-BOOT-TEST-CANDIDATE.zip'
 $EfiZipSha256 = 'b726bf990b08bc1955ff99c54afbfb0b979305d7c8da39247db9819d34a440d9'
 $OpenCoreUrl = 'https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip'
@@ -117,7 +118,7 @@ try {
 
     $vol = Get-Volume -DriveLetter $TargetLetter -ErrorAction Stop
     $part = Get-Partition -DriveLetter $TargetLetter -ErrorAction Stop
-    if ($part.DiskNumber -ne $disk.Number -or $part.GptType -ne '{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}' -or $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA') { Stop-Setup ('FORMATTED_USB_VERIFICATION_FAILED; GPT_TYPE=' + $part.GptType) }
+    if ($part.DiskNumber -ne $disk.Number -or ([string]$part.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA') { Stop-Setup ('FORMATTED_USB_VERIFICATION_FAILED; GPT_TYPE=' + $part.GptType) }
 
     Write-Host 'STEP 5/5: Copy EFI and Sequoia Recovery...'
     $usbRoot = $TargetLetter + ':\'
