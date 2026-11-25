@@ -95,6 +95,7 @@ jobs:
           stage_kext IntelMausi 1.0.8 https://github.com/acidanthera/IntelMausi/releases/download/1.0.8/IntelMausi-1.0.8-RELEASE.zip IntelMausi.kext
           stage_kext NVMeFix 1.1.3 https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip NVMeFix.kext
           stage_kext USBToolBox 1.2.0 https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip USBToolBox.kext
+          echo "c315a3a5acfd496dd97d0d19b4fbd1d487103d2fd541c5651583d4c9cebcfe07  /tmp/USBToolBox-1.2.0.zip" | shasum -a 256 --check -
           mkdir -p build/EFI/OC/Kexts/UTBMap.kext/Contents
           cp B460M-OC-Builder/EFI/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist build/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
           python3 - <<'PY'
