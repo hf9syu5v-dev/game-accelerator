@@ -121,6 +121,42 @@ jobs:
           print("UTBMap plist verified: 11 mapped ports; highest hardware index 20")
           PY
 
+      - name: Verify staged kext metadata and x86_64 executables
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          import subprocess
+          from pathlib import Path
+
+          root = Path("build/EFI/OC/Kexts")
+          expected = {
+              "Lilu.kext": ("as.vit9696.Lilu", "1.7.2", "Contents/MacOS/Lilu"),
+              "VirtualSMC.kext": ("as.vit9696.VirtualSMC", "1.3.8", "Contents/MacOS/VirtualSMC"),
+              "WhateverGreen.kext": ("as.vit9696.WhateverGreen", "1.7.1", "Contents/MacOS/WhateverGreen"),
+              "AppleALC.kext": ("as.vit9696.AppleALC", "1.9.8", "Contents/MacOS/AppleALC"),
+              "IntelMausi.kext": ("as.acidanthera.mieze.IntelMausi", "1.0.8", "Contents/MacOS/IntelMausi"),
+              "NVMeFix.kext": ("org.acidanthera.NVMeFix", "1.1.3", "Contents/MacOS/NVMeFix"),
+              "USBToolBox.kext": ("com.dhinakg.USBToolBox.kext", "1.2.0", "Contents/MacOS/USBToolBox"),
+          }
+          for bundle, (bundle_id, version, executable) in expected.items():
+              info = root / bundle / "Contents/Info.plist"
+              meta = plistlib.loads(info.read_bytes())
+              assert meta["CFBundleIdentifier"] == bundle_id, (bundle, meta.get("CFBundleIdentifier"))
+              assert meta["CFBundleVersion"] == version, (bundle, meta.get("CFBundleVersion"))
+              binary = root / bundle / executable
+              assert binary.is_file() and binary.stat().st_size > 0, str(binary)
+              subprocess.run(["lipo", "-verify_arch", "x86_64", str(binary)], check=True)
+              print(f"PASS: {bundle} {version} x86_64")
+          utb = plistlib.loads((root / "UTBMap.kext/Contents/Info.plist").read_bytes())
+          assert utb["CFBundleIdentifier"] == "com.dhinakg.USBToolBox.map"
+          assert utb["CFBundleVersion"] == "1.1"
+          assert utb["OSBundleLibraries"]["com.dhinakg.USBToolBox.kext"] == "1.0.0"
+          assert not (root / "UTBMap.kext/Contents/MacOS").exists()
+          print("PASS: UTBMap 1.1 codeless dependency metadata")
+          PY
+
       # USBToolBox 1.2.0 handles the broken 400-series RHUB ACPI path;
       # do not inject the separate SSDT-RHUB when using UTBMap.
       - name: Copy verified repository ACPI tables
