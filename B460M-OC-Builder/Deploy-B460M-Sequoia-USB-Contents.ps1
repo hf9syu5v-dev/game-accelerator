@@ -99,7 +99,8 @@ try {
     }
     foreach ($candidate in $pythonCandidates) {
         try {
-            $versionOutput = (& $candidate.Path @($candidate.Args) --version 2>&1 | Out-String).Trim()
+            $candidateArgs = @($candidate.Args)
+            $versionOutput = (& $candidate.Path @candidateArgs --version 2>&1 | Out-String).Trim()
             if ($LASTEXITCODE -eq 0 -and $versionOutput -match '^Python\\s+3\\.') {
                 $pyExe = $candidate.Path
                 $pyArgs = @($candidate.Args)
