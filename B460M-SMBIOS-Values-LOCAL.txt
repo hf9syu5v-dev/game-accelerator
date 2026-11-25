@@ -1,0 +1,12 @@
+﻿B460M-PLUS OpenCore PlatformInfo / Generic
+Generated locally: 2026-11-25 14:30:23
+
+SystemProductName = iMac20,1
+SystemSerialNumber = C02J5NYBPN5T
+MLB = C02231609GUPHC1JC
+ROM = 3c7c3fd77ee8
+SystemUUID = 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6
+Source NIC = Intel I219-V
+NIC MAC = 3C-7C-3F-D7-7E-E8
+
+Keep private. Do not upload or commit this file to GitHub.
