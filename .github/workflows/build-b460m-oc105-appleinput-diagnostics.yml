@@ -27,6 +27,9 @@ jobs:
             apple_event: Auto
             mirroring: true
     name: ${{ matrix.profile.name }}
+    env:
+      APPLE_EVENT: ${{ matrix.profile.apple_event }}
+      MIRRORING: ${{ matrix.profile.mirroring }}
     steps:
       - uses: actions/checkout@v4
       - name: Download pinned baseline and official OpenCore 1.0.5
