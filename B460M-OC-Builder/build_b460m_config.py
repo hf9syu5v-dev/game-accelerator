@@ -136,15 +136,14 @@ nvram["Add"].setdefault("7C436110-AB2A-4BBB-A880-FE41995C9F82", {}).update({
     "prev-lang:kbd": bytes.fromhex("656e2d55533a30"),
 })
 nvram["Delete"] = {}
-nvram["LegacyEnable"] = False
 nvram["LegacyOverwrite"] = False
 nvram["WriteFlash"] = True
 
 # UEFI drivers.
 uefi = need(cfg, "UEFI")
 uefi["Drivers"] = [
-    {"Arguments": "", "Comment": "OpenCore runtime services", "Enabled": True, "LoadEarly": False, "Path": "OpenRuntime.efi"},
-    {"Arguments": "", "Comment": "HFS filesystem driver", "Enabled": True, "LoadEarly": False, "Path": "HfsPlus.efi"},
+    {"Arguments": "", "Comment": "OpenCore runtime services", "Enabled": True, "HideVerbose": False, "LoadEarly": False, "Path": "OpenRuntime.efi"},
+    {"Arguments": "", "Comment": "HFS filesystem driver", "Enabled": True, "HideVerbose": False, "LoadEarly": False, "Path": "HfsPlus.efi"},
 ]
 for driver in uefi["Drivers"]:
     if not (oc_dir / "Drivers" / driver["Path"]).is_file():
