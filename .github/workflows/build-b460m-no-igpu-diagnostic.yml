@@ -27,10 +27,17 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --name "B460M-OpenCore-1.0.8-DEBUG-USB-NO-SS04-DIAGNOSTIC" \
             --dir base
-          test -s base/EFI/OC/config.plist
-          test -s base/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
-          test -s base/EFI/BOOT/BOOTx64.efi
-          cp -a base build
+          base_zip="$(find base -type f -name 'B460M-no-SS04-Diagnostic-EFI.zip' -print -quit)"
+          test -n "$base_zip"
+          mkdir -p base-extracted
+          unzip -q "$base_zip" -d base-extracted
+          efi_dir="$(find base-extracted -type d -name EFI -print -quit)"
+          test -n "$efi_dir"
+          test -s "$efi_dir/OC/config.plist"
+          test -s "$efi_dir/OC/Kexts/UTBMap.kext/Contents/Info.plist"
+          test -s "$efi_dir/BOOT/BOOTx64.efi"
+          mkdir -p build
+          cp -a "$efi_dir" build/EFI
 
       - name: Add only the iGPU-isolation boot argument
         shell: bash
