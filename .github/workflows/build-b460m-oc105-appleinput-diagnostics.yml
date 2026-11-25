@@ -278,3 +278,41 @@ jobs:
             debug-output/EFI/
             debug-output/DIAGNOSTIC-REPORT.txt
           if-no-files-found: error
+
+  validate-debug-input-deployer:
+    needs: build-debug-input-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit
+          path: downloaded-artifact
+      - name: Validate deployer syntax, artifact checksum, and EFI safety invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile B460M-OC-Builder/Deploy-B460M-OC105-DEBUG-Firmware-Input-Audit.py
+          python3 - <<'PY'
+          import hashlib, importlib.util, plistlib, tempfile
+          from pathlib import Path
+          p=Path('B460M-OC-Builder/Deploy-B460M-OC105-DEBUG-Firmware-Input-Audit.py')
+          spec=importlib.util.spec_from_file_location('deployer',p)
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          z=Path('downloaded-artifact/B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip')
+          assert z.is_file(),list(Path('downloaded-artifact').rglob('*'))
+          digest=hashlib.sha256(z.read_bytes()).hexdigest()
+          assert digest==m.EXPECTED_SHA256,(digest,m.EXPECTED_SHA256)
+          with tempfile.TemporaryDirectory() as td:
+              efi=m.safe_extract(z,Path(td)/'extract')
+              count=m.verify_efi(efi)
+              print('DEPLOYER_ARTIFACT_SHA256=PASS')
+              print('DEPLOYER_SAFE_EXTRACT=PASS')
+              print('DEPLOYER_VERIFY_EFI=PASS FILES='+str(count))
+          source=p.read_text()
+          forbidden=['Clear-Disk','Format-Volume','Remove-Partition','Initialize-Disk','Set-Partition','Remove-Item F:','rmdir F:']
+          for token in forbidden: assert token.lower() not in source.lower(),token
+          assert 'current.rename(backup)' in source and 'stage.rename(current)' in source
+          print('DISK_SAFETY_STATIC_AUDIT=PASS; ONLY F:\\EFI SWAP PATH PRESENT')
+          PY
