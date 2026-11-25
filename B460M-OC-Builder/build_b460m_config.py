@@ -20,21 +20,21 @@ def need(mapping, key):
         raise SystemExit(f"Missing expected Sample.plist key: {key}")
     return mapping[key]
 
-# Keep only the selected SMBIOS model. The previously used serial/MLB/ROM/UUID
-# were exposed in public Git history and must not be reused. Fresh values are
-# generated locally on the target PC and applied after this staging build.
+# TEMPORARY TEST IDENTITY requested for first hardware bring-up.
+# Replace locally with a fresh matching GenSMBIOS set after initial boot testing.
+# These values are test-only and must not be treated as a permanent identity.
 generic = need(need(cfg, "PlatformInfo"), "Generic")
 generic.update({
     "AdviseFeatures": True,
     "MaxBIOSVersion": False,
-    "MLB": "",
+    "MLB": "C02231609GUPHC1JC",
     "ProcessorType": 0,
-    "ROM": b"",
+    "ROM": bytes.fromhex("3c7c3fd77ee8"),
     "SpoofVendor": True,
     "SystemMemoryStatus": "Auto",
     "SystemProductName": "iMac20,1",
-    "SystemSerialNumber": "",
-    "SystemUUID": "",
+    "SystemSerialNumber": "C02J5NYBPN5T",
+    "SystemUUID": "78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6",
 })
 need(cfg, "PlatformInfo").update({
     "Automatic": True,
