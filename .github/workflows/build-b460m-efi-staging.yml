@@ -94,30 +94,25 @@ jobs:
           stage_kext AppleALC 1.9.8 https://github.com/acidanthera/AppleALC/releases/download/1.9.8/AppleALC-1.9.8-RELEASE.zip AppleALC.kext
           stage_kext IntelMausi 1.0.8 https://github.com/acidanthera/IntelMausi/releases/download/1.0.8/IntelMausi-1.0.8-RELEASE.zip IntelMausi.kext
           stage_kext NVMeFix 1.1.3 https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip NVMeFix.kext
-
-      - name: Compile and validate board-specific RHUB SSDT
-        shell: bash
-        run: |
-          set -euo pipefail
-          source="B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.dsl"
-          test -s "$source"
-          iasl -tc "$source"
-          generated="${source%.dsl}.aml"
-          test -s "$generated"
-          cp "$generated" build/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.aml
-          iasl -d build/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.aml
+          stage_kext USBToolBox 1.2.0 https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip USBToolBox.kext
+          mkdir -p build/EFI/OC/Kexts/UTBMap.kext/Contents
+          cp B460M-OC-Builder/EFI/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist build/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
           python3 - <<'PY'
+          import plistlib
           from pathlib import Path
-          p = Path("build/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.aml")
-          b = p.read_bytes()
-          assert len(b) >= 36, "AML shorter than ACPI header"
-          assert b[:4] == b"SSDT", f"Unexpected ACPI signature: {b[:4]!r}"
-          declared = int.from_bytes(b[4:8], "little")
-          assert declared == len(b), f"Length mismatch: header={declared}, actual={len(b)}"
-          assert sum(b) % 256 == 0, "ACPI checksum is invalid"
-          print(f"RHUB AML OK: {len(b)} bytes; checksum=0")
+          p = Path("build/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist")
+          m = plistlib.loads(p.read_bytes())
+          assert m["CFBundleIdentifier"] == "com.dhinakg.USBToolBox.map"
+          assert m["OSBundleLibraries"]["com.dhinakg.USBToolBox.kext"] == "1.0.0"
+          ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert len(ports) == 11
+          assert int.from_bytes(m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["port-count"], "little") == 20
+          assert len(ports) <= 15, "Apple XHCI port limit exceeded"
+          print("UTBMap plist verified: 11 mapped ports; highest hardware index 20")
           PY
 
+      # USBToolBox 1.2.0 handles the broken 400-series RHUB ACPI path;
+      # do not inject the separate SSDT-RHUB when using UTBMap.
       - name: Copy verified repository ACPI tables
         shell: bash
         run: |
@@ -155,8 +150,11 @@ jobs:
           assert c["Booter"]["Quirks"]["DevirtualiseMmio"] is True
           assert c["Booter"]["Quirks"]["SetupVirtualMap"] is False
           assert c["Booter"]["Quirks"]["ProtectUefiServices"] is True
-          assert len(c["Kernel"]["Add"]) == 6
-          assert len(c["ACPI"]["Add"]) == 4
+          assert len(c["Kernel"]["Add"]) == 8
+          assert [x["BundlePath"] for x in c["Kernel"]["Add"]][-2:] == ["USBToolBox.kext", "UTBMap.kext"]
+          assert c["Kernel"]["Add"][-1]["ExecutablePath"] == ""
+          assert len(c["ACPI"]["Add"]) == 3
+          assert all(x["Path"] != "SSDT-RHUB-B460M-PLUS.aml" for x in c["ACPI"]["Add"])
           print(f"config.plist parsed: {p.stat().st_size} bytes")
           PY
 
@@ -168,14 +166,14 @@ jobs:
             echo "# B460M OpenCore staging build"
             echo
             echo "- OpenCore: 1.0.8 DEBUG"
-            echo "- Kexts: Lilu 1.7.2; VirtualSMC 1.3.8; WhateverGreen 1.7.1; AppleALC 1.9.8; IntelMausi 1.0.8; NVMeFix 1.1.3"
-            echo "- ACPI: PLUG, EC-USBX, AWAC, and compiled board-specific RHUB"
+            echo "- Kexts: Lilu 1.7.2; VirtualSMC 1.3.8; WhateverGreen 1.7.1; AppleALC 1.9.8; IntelMausi 1.0.8; NVMeFix 1.1.3; USBToolBox 1.2.0; UTBMap 1.1"
+            echo "- ACPI: PLUG, EC-USBX, AWAC; USBToolBox handles RHUB removal"
             echo "- Drivers: OpenRuntime.efi and HfsPlus.efi"
             echo "- Config: hardware-specific config.plist candidate generated and checked with matching ocvalidate"
             echo "- Status: STAGING ONLY; NOT BOOTABLE"
             echo
             echo "The config.plist includes the user's requested TEMPORARY TEST SMBIOS identity for initial bring-up only. Replace it locally with a fresh matching GenSMBIOS set after testing."
-            echo "USB port mapping and real-hardware testing are not complete. No installer, disk image, or physical EFI write is included."
+            echo "The supplied UTBMap is staged but physical port-by-port behavior still requires validation. No installer, disk image, or physical EFI write is included."
             echo
             echo "## SHA-256"
             shasum -a 256 build/EFI/BOOT/BOOTx64.efi build/EFI/OC/OpenCore.efi build/EFI/OC/Drivers/*.efi build/EFI/OC/ACPI/*.aml
@@ -183,7 +181,8 @@ jobs:
           cat > build/DO-NOT-BOOT.txt <<'EOF'
           This is an incomplete staging EFI, not a bootable OpenCore configuration.
           A hardware-specific config.plist candidate is included, but it is not approved
-          for booting. USB port mapping and real-hardware validation are still outstanding.
+          for booting. The supplied UTBMap is staged; physical port-by-port behavior
+          and real-hardware validation are still outstanding.
           Do not use this artifact to boot or install macOS. No disk image or physical EFI write is included.
           EOF
           test -s build/EFI/OC/config.plist
