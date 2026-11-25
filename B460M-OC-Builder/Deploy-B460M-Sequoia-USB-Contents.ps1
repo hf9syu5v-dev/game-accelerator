@@ -35,7 +35,7 @@ foreach ($n in @('EFI','com.apple.recovery.boot','USB-BUILD-REPORT.txt')) {
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
 $artifactZip = Join-Path $Work 'B460M-iGPU-Isolation-Diagnostic-EFI.zip'
 $artifactUrl = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-no-igpu-diagnostic-latest/B460M-iGPU-Isolation-Diagnostic-EFI.zip'
-$artifactSha256 = '27611d55fde098f6ff5ece81b53620e64baca390e70ad1b3022c3b2b643831e0'
+$artifactSha256 = '7d37511a7926ea91958a2c37889053f93dd5e4301afa2d3d498bf69dd8ff19db'
 Write-Host 'DOWNLOADING_EFI: fetching the verified no-iGPU package from the project release...'
 try {
     Invoke-WebRequest -Uri $artifactUrl -OutFile $artifactZip -UseBasicParsing
