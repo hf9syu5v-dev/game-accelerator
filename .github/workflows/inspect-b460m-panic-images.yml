@@ -39,3 +39,5 @@ jobs:
           path: panic-review/
           if-no-files-found: error
           retention-days: 7
+
+# Trigger the inspection workflow on its next repository update.
