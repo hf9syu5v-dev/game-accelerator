@@ -41,7 +41,7 @@ try {
  foreach($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Drivers\OpenUsbKbDxe.efi','OC\Kexts\UTBMap.kext\Contents\Info.plist')){if(!(Test-Path -LiteralPath (Join-Path $src $rel) -PathType Leaf)){Stop-Deploy "Required EFI file missing: $rel"}}
  [xml]$xml=Get-Content -LiteralPath $cfg -Raw
  $x=$xml.OuterXml
- if($x -notmatch '<key>KeySupport</key><false\s*/>' -or $x -notmatch 'OpenUsbKbDxe.efi' -or $x -notmatch '<key>PollAppleHotKeys</key><false\s*/>' -or $x -notmatch '-radvesa' -or $x -notmatch 'iMac20,1'){Stop-Deploy 'Config assertions failed.'}
+ if($x -notmatch '<key>KeySupport</key>\s*<false\s*/>' -or $x -notmatch 'OpenUsbKbDxe.efi' -or $x -notmatch '<key>PollAppleHotKeys</key>\s*<false\s*/>' -or $x -notmatch '-radvesa' -or $x -notmatch 'iMac20,1'){Stop-Deploy 'Config assertions failed.'}
  $files=@(Get-ChildItem -LiteralPath $src -File -Recurse)
  if($files.Count -lt 20){Stop-Deploy 'EFI file count suspicious.'}
  New-Item -ItemType Directory -Path $stage | Out-Null
