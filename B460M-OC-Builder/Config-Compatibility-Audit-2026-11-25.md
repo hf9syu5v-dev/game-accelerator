@@ -129,3 +129,13 @@ Run #38 does not change the generated OpenCore configuration. It improves artifa
 Full record: [Artifact-Audit-Run-45588972597.md](Artifact-Audit-Run-45588972597.md).
 
 Run #38 is the latest successful CI-validated staging artifact. It remains **STAGING ONLY — NOT BOOTABLE** pending physical USB mapping and hardware validation.
+
+## 14. Latest staging build — Run #39
+
+Run 45589183742 completed successfully from commit `d1cf51af645ece00e8f389967e32b88fd7232c2a`. Artifact ID `15009712619`; downloaded ZIP SHA-256 `7844f3e2f544d9fe51acb0e2b120c74fb4067bcce447e1c18954e540bc1acadb`.
+
+Run #39 adds exact USB map structural assertions to CI. The workflow now checks every logical port name, hardware index and connector type in the supplied 11-port UTBMap, verifies all indices are unique, and retains `port-count=20`. The downloaded artifact was independently inspected: all 24 EFI payload SHA-256 entries in the manifest matched, config.plist parsed, and the UTBMap matched the exact expected 11-entry map.
+
+This only protects the existing map against accidental changes; it does not prove physical socket correspondence. Full record: [Artifact-Audit-Run-45589183742.md](Artifact-Audit-Run-45589183742.md).
+
+Run #39 is the latest successful CI-validated staging artifact. It remains **STAGING ONLY — NOT BOOTABLE** pending physical USB mapping and hardware validation.
