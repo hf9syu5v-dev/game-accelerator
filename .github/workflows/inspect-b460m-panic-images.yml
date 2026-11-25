@@ -1,0 +1,41 @@
+name: Inspect B460M panic screenshots
+
+on:
+  push:
+    paths:
+      - ".github/workflows/inspect-b460m-panic-images.yml"
+      - "efi 错误截图01目录/*.png"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect-images:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Convert screenshots to transport-safe previews and OCR
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install tesseract
+          mkdir -p panic-review/previews panic-review/ocr
+          for n in 04 05 06 07; do
+            src="efi 错误截图01目录/启动错误 ${n}.png"
+            test -s "$src"
+            sips -s format jpeg -s formatOptions 82 -Z 1800 "$src" --out "panic-review/previews/start-error-${n}.jpg" >/dev/null
+            tesseract "$src" "panic-review/ocr/start-error-${n}" -l eng 2>/dev/null || true
+          done
+          cat panic-review/ocr/*.txt > panic-review/OCR-ALL.txt
+          echo "PREVIEWS:"
+          ls -lh panic-review/previews
+          echo "OCR:"
+          cat panic-review/OCR-ALL.txt
+      - name: Upload screenshot review package
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Panic-Screenshot-Review
+          path: panic-review/
+          if-no-files-found: error
+          retention-days: 7
