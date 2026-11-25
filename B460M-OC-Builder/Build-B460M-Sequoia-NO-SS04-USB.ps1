@@ -29,13 +29,12 @@ try{
  $ds=@(Get-Disk|Where-Object{$_.FriendlyName -eq $Model -and $_.SerialNumber -and (($_.SerialNumber.Trim() -replace '\s','') -eq $Serial) -and $_.BusType -eq 'USB' -and $_.Size -ge 115GB -and $_.Size -le 125GB})
  if($ds.Count -ne 1){Fail "Safety stop: expected one matching USB, found $($ds.Count)."}
  $d=$ds[0];if($d.IsBoot -or $d.IsSystem -or $d.IsReadOnly -or $d.IsOffline){Fail 'Safety stop: target is boot/system/read-only/offline.'}
- $existingParts=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition -Filter ("DiskNumber = "+[int]$d.Number) -ErrorAction Stop)
+ $pnow=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
  $part=$null
- if($existingParts.Count -eq 0){
+ if($pnow.Count -eq 0){
   $resumeExisting=$false
  }else{
   # Resume only the exact intermediate layout from the previous run.
-  $pnow=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
   $msr=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -and $_.Size -ge 15MB -and $_.Size -le 17MB})
   $data=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB})
   if($pnow.Count -ne 2 -or $msr.Count -ne 1 -or $data.Count -ne 1){Fail "Safety stop: USB has $($pnow.Count) partitions, not the exact recognized resumable layout. No disk changes made."}
