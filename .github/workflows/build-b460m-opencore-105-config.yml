@@ -232,7 +232,7 @@ jobs:
           chmod +x oc105/Utilities/ocvalidate/ocvalidate
           oc105/Utilities/ocvalidate/ocvalidate staging/EFI/OC/config.plist
 
-      - name: Strict schema, file, hardware-policy and privacy assertions
+      - name: Strict schema, file, hardware-policy and requested SMBIOS assertions
         shell: bash
         run: |
           set -euo pipefail
@@ -297,9 +297,14 @@ jobs:
               assert "EFI/OC/Drivers/OpenRuntime.efi" in names
               for k in ["Lilu","VirtualSMC","WhateverGreen","AppleALC","IntelMausi","NVMeFix","USBToolBox","UTBMap"]:
                   assert any(n.startswith(f"EFI/OC/Kexts/{k}.kext/Contents/Info.plist") for n in names), k
-              for forbidden in [b"C02J5NYBPN5T",b"C02231609GUPHC1JC",b"78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"]:
-                  assert all(forbidden not in z.read(n) for n in names if not n.endswith((".efi",".aml")))
-          print("Final EFI package integrity and SMBIOS privacy assertions passed.")
+              cfg=plistlib.loads(z.read("EFI/OC/config.plist"))
+              g=cfg["PlatformInfo"]["Generic"]
+              assert g["SystemProductName"]=="iMac20,1"
+              assert g["SystemSerialNumber"]=="C02J5NYBPN5T"
+              assert g["MLB"]=="C02231609GUPHC1JC"
+              assert g["SystemUUID"]=="78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"
+              assert g["ROM"]==bytes.fromhex("3c7c3fd77ee8")
+          print("Final EFI package integrity and embedded iMac20,1 SMBIOS values verified.")
           PY
 
       - name: Upload final EFI package
