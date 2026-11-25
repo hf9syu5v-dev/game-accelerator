@@ -127,9 +127,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 B460M-OC-Builder/build_b460m_config.py \\
-            build/Tools/OpenCore-1.0.8-Sample.plist \\
-            build/EFI/OC/config.plist \\
+          python3 B460M-OC-Builder/build_b460m_config.py \
+            build/Tools/OpenCore-1.0.8-Sample.plist \
+            build/EFI/OC/config.plist \
             build/EFI/OC
           validator="$(find /tmp/opencore -type f -name ocvalidate -print -quit)"
           test -n "$validator"
