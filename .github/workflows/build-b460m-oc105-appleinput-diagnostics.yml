@@ -65,20 +65,23 @@ jobs:
             "BOOT/BOOTx64.efi": "BOOTx64.efi",
             "OC/OpenCore.efi": "OpenCore.efi",
             "OC/Drivers/OpenRuntime.efi": "OpenRuntime.efi",
-            "OC/Drivers/HfsPlus.efi": "HfsPlus.efi",
           }
           official_efi=Path("official/X64/EFI")
+          def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
           for deployed_rel, name in checks.items():
               deployed=efi/deployed_rel
               official=official_efi/("BOOT/"+name if deployed_rel.startswith("BOOT/") else "OC/"+("Drivers/"+name if "/Drivers/" in deployed_rel else name))
               assert deployed.is_file(),f"DEPLOYED_MISSING: {deployed_rel}"
               assert official.is_file(),f"OFFICIAL_X64_MISSING: {official}"
-              def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
               a,b=sha(deployed),sha(official)
               print(f"{deployed_rel}: deployed={a} official={b}")
               if a!=b:
                   raise SystemExit(f"BINARY_VERSION_MISMATCH: {deployed_rel}")
-          print("BOOT_CHAIN_BINARY_MATCH=PASS (4/4)")
+          hfs=efi/"OC/Drivers/HfsPlus.efi"
+          assert hfs.is_file(),"DEPLOYED_MISSING: OC/Drivers/HfsPlus.efi"
+          print(f"OCBINARYDATA_HFSPLUS_PRESENT=YES SHA256={sha(hfs)}")
+          print("OPENCORE_BOOT_CHAIN_BINARY_MATCH=PASS (3/3)")
+          print("HFSPLUS_PROVENANCE=SEPARATE_OCBINARYDATA_DRIVER; HASH_RECORDED_FOR_PINNED_SOURCE_CHECK")
           PY
       - name: Apply isolated AppleInput variables
         env:
