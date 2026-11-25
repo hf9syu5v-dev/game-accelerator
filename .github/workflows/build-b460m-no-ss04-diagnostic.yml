@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   diagnostic-efi:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -105,7 +105,7 @@ jobs:
             echo "- ScanPolicy=0x00200703; internal SATA/NVMe remain excluded"
             echo "- Hardware test is still required; not represented as hardware-verified"
             echo
-            find build/EFI -type f -print0 | sort -z | xargs -0 sha256sum
+            find build/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
           } > build/BUILD-MANIFEST.md
           cat > build/USB-DIAGNOSTIC-README.txt <<'EOF'
           B460M TARGETED USB DIAGNOSTIC EFI
@@ -123,7 +123,7 @@ jobs:
           zip -qr ../B460M-no-SS04-Diagnostic-EFI.zip EFI BUILD-MANIFEST.md USB-DIAGNOSTIC-README.txt
           cd ..
           unzip -t B460M-no-SS04-Diagnostic-EFI.zip
-          sha256sum B460M-no-SS04-Diagnostic-EFI.zip
+          shasum -a 256 B460M-no-SS04-Diagnostic-EFI.zip
 
       - name: Upload targeted diagnostic EFI
         uses: actions/upload-artifact@v4
