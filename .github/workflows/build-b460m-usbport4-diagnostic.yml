@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out project
@@ -84,7 +84,7 @@ jobs:
           echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
           mkdir -p /tmp/oc
           unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
-          validator="$(find /tmp/oc -type f -name ocvalidate -print -quit)"
+          validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
           test -n "$validator"
           chmod +x "$validator"
           "$validator" base/EFI/OC/config.plist
