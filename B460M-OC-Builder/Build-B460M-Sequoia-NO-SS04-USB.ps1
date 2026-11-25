@@ -54,10 +54,12 @@ try{
    if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
    Start-Sleep -Seconds 3
   }
-  Write-Host 'DIAG: before .NET DriveInfo volume check'
-  $vol=New-Object System.IO.DriveInfo ($resumeLetter+':\')
-  if(!$vol.IsReady){Fail ("Safety stop: existing partition "+$resumeLetter+": is not ready. No files copied or formatted.")}
-  if($vol.DriveFormat -ne 'FAT32' -or $vol.VolumeLabel -ne 'OC-SEQUOIA'){Fail ("Safety stop: existing partition "+$resumeLetter+": is not the expected FAT32 volume. No files copied or formatted.")}
+  Write-Host ("DIAG: resume drive letter=["+$resumeLetter+"]")
+  Write-Host 'DIAG: before .NET DriveInfo enumeration'
+  $vol=@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.Name -eq ($resumeLetter + ':\') }) | Select-Object -First 1
+  if($null -eq $vol){Fail ("Safety stop: drive "+$resumeLetter+": is not mounted. No files copied or formatted.")}
+  if(!$vol.IsReady){Fail ("Safety stop: drive "+$resumeLetter+": is not ready. No files copied or formatted.")}
+  if($vol.DriveFormat -ne 'FAT32' -or $vol.VolumeLabel -ne 'OC-SEQUOIA'){Fail ("Safety stop: drive "+$resumeLetter+": is not the expected FAT32 volume. No files copied or formatted.")}
   Write-Host 'DIAG: .NET DriveInfo volume check passed'
   $chosenLetter=$resumeLetter
   $resumeExisting=$true
@@ -133,8 +135,8 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  for($i=1;$i -le 15;$i++){
   if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
   Start-Sleep -Seconds 2
-  $logical=New-Object System.IO.DriveInfo ($chosenLetter+':\')
-  if($logical.IsReady -and $logical.DriveFormat -eq 'FAT32' -and $logical.VolumeLabel -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}
+  $logical=@([System.IO.DriveInfo]::GetDrives() | Where-Object { $_.Name -eq ($chosenLetter + ':\') }) | Select-Object -First 1
+  if($logical -and $logical.IsReady -and $logical.DriveFormat -eq 'FAT32' -and $logical.VolumeLabel -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}
  }
  if(!$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA' -or !(Test-Path $root)){Fail "New FAT32 volume not accessible/verified: drive=$chosenLetter; fs=$($logical.FileSystem); label=$($logical.VolumeName)."}
  Write-Host "TEMPORARY_BASIC_DATA_VOLUME_VERIFIED: $root" -ForegroundColor Green
