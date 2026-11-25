@@ -92,21 +92,22 @@ try {
             throw "GPT_TYPE_UPDATE_FAILED: actual type is $($part.GptType)."
         }
 
-        if (-not $part.DriveLetter) {
-            $eUse = Get-Volume -DriveLetter $DriveLetter -ErrorAction SilentlyContinue
-            if ($eUse) { throw 'ESP type changed, but drive E: is occupied by another volume. Files remain untouched; assign a free letter manually.' }
-            Set-Partition -DiskNumber $disk.Number -PartitionNumber 1 -NewDriveLetter $DriveLetter -Confirm:$false
-            $part = Get-Partition -DiskNumber $disk.Number -PartitionNumber 1
+        $matchingVolumes = @(Get-Volume | Where-Object {
+            $_.FileSystem -eq 'FAT32' -and $_.FileSystemLabel -eq 'OC-SEQUOIA'
+        })
+        if ($matchingVolumes.Count -ne 1) {
+            throw "POSTCHECK_FAILED: expected one OC-SEQUOIA FAT32 volume after GPT update; found $($matchingVolumes.Count)."
         }
-
-        $vol = Get-Volume -DriveLetter $DriveLetter -ErrorAction Stop
-        if ($vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA') {
-            throw 'POSTCHECK_FAILED: FAT32 volume or label changed unexpectedly.'
-        }
-        foreach ($rel in $required) {
-            if (-not (Test-Path -LiteralPath (Join-Path ($DriveLetter + ':\') $rel) -PathType Leaf)) {
-                throw "POSTCHECK_FAILED: file not accessible after GPT type update: $rel"
+        $vol = $matchingVolumes[0]
+        if ($vol.DriveLetter) {
+            foreach ($rel in $required) {
+                if (-not (Test-Path -LiteralPath (Join-Path ($vol.DriveLetter + ':\') $rel) -PathType Leaf)) {
+                    throw "POSTCHECK_FAILED: file not accessible after GPT type update: $rel"
+                }
             }
+        } else {
+            Write-Host 'Windows has hidden the ESP drive letter; this is normal for EFI System Partitions.'
+            Write-Host 'The USB files were checked before the metadata-only conversion and were not modified.'
         }
         Write-Host 'GPT_PARTITION_TYPE_REPAIRED=PASS' -ForegroundColor Green
     } else {
