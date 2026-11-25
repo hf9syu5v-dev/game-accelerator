@@ -44,6 +44,7 @@ jobs:
           unzip -oq baseline.zip -d baseline
           curl --fail --location --retry 3 https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip -o OpenCore-1.0.5-DEBUG.zip
           echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
+          curl --fail --location --retry 3 https://raw.githubusercontent.com/acidanthera/OcBinaryData/c2a98980d30e39a571a2843ab26aa8d2b9188094/Drivers/HfsPlus.efi -o HfsPlus.efi
           mkdir official
           unzip -oq OpenCore-1.0.5-DEBUG.zip -d official
           validator="$(find official -type f -name ocvalidate.linux -print -quit)"
@@ -79,9 +80,14 @@ jobs:
                   raise SystemExit(f"BINARY_VERSION_MISMATCH: {deployed_rel}")
           hfs=efi/"OC/Drivers/HfsPlus.efi"
           assert hfs.is_file(),"DEPLOYED_MISSING: OC/Drivers/HfsPlus.efi"
-          print(f"OCBINARYDATA_HFSPLUS_PRESENT=YES SHA256={sha(hfs)}")
+          source=Path("HfsPlus.efi")
+          assert source.is_file(),"PINNED_OCBINARYDATA_HFSPLUS_DOWNLOAD_MISSING"
+          deployed_hash,source_hash=sha(hfs),sha(source)
+          print(f"HfsPlus.efi: deployed={deployed_hash} pinned_OcBinaryData={source_hash}")
+          if deployed_hash!=source_hash:
+              raise SystemExit("HFSPLUS_BINARY_MISMATCH: deployed driver differs from pinned Acidanthera OcBinaryData")
           print("OPENCORE_BOOT_CHAIN_BINARY_MATCH=PASS (3/3)")
-          print("HFSPLUS_PROVENANCE=SEPARATE_OCBINARYDATA_DRIVER; HASH_RECORDED_FOR_PINNED_SOURCE_CHECK")
+          print("HFSPLUS_PINNED_OCBINARYDATA_MATCH=PASS")
           PY
       - name: Apply isolated AppleInput variables
         env:
