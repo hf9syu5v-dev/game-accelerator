@@ -37,8 +37,8 @@ jobs:
           set -euo pipefail
           builder="B460M-OC-Builder/Build-B460M-Sequoia-Native-Recovery-USB.ps1"
           validator="B460M-OC-Builder/Test-B460M-Sequoia-USB-ReadOnly.ps1"
-          grep -Fq "'create partition efi size=\$Fat32SizeMB'" "$builder"
-          if grep -Fq "'create partition primary size=\$Fat32SizeMB'" "$builder"; then
+          grep -Fq 'create partition efi size=$Fat32SizeMB' "$builder"
+          if grep -Fq 'create partition primary size=$Fat32SizeMB' "$builder"; then
             echo "ERROR: GPT Basic Data partition creation is forbidden for this USB." >&2
             exit 1
           fi
