@@ -52,7 +52,7 @@ VirtualSMC plugins:
 - SMCProcessor.kext: optional CPU sensor monitoring; may be added after the base boot is stable.
 - SMCSuperIO.kext: optional motherboard fan/sensor monitoring; defer until the Super I/O chip is identified and sensor behavior is checked.
 
-Do not add unrelated kexts just to make the folder look complete. USBToolBox.kext + a generated UTBMap.kext are a post-install USB mapping task, not a substitute for the initial firmware USB controller workaround.
+Do not add unrelated kexts just to make the folder look complete. The current staging design uses USBToolBox.kext + the supplied UTBMap.kext from the first boot candidate. USBToolBox's official documentation states that it can ignore broken ACPI port definitions on 400-series Intel boards and replaces SSDT-RHUB. This is the selected alternative to injecting the board-specific SSDT-RHUB; do not enable both without a controlled test. The supplied map still requires physical port-by-port verification.
 
 ## 4. Audio decision
 
