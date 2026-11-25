@@ -49,7 +49,7 @@ Decision: no standalone HPET patch is currently justified by the Comet Lake desk
 - DSDT contains HS01–HS14 and SS01–SS10 ACPI port objects (some SuperSpeed _ADR values are method-derived).
 - Static ACPI cannot tell which physical motherboard sockets are actually wired/used.
 
-Decision: include Dortania `SSDT-RHUB.aml`. Its implementation hides RHUB only when Darwin is detected, allowing macOS to rebuild the root hub/ports; Windows retains the OEM device. This is specifically recommended by Dortania for ASUS 400-series boards. Do not infer a final USB port map from ACPI object names alone; perform physical USB mapping after macOS boots.
+Historical ACPI-only decision: Dortania recommends `SSDT-RHUB` for ASUS 400-series boards. However, the selected current design includes USBToolBox 1.2.0, whose official documentation explicitly says it ignores broken ACPI port definitions on 400-series Intel boards and replaces `SSDT-RHUB`. Therefore the current EFI intentionally does **not** inject `SSDT-RHUB` while USBToolBox is enabled. The board-specific `SSDT-RHUB-B460M-PLUS.dsl` is retained only as a fallback if USBToolBox is removed or its RHUB bypass proves ineffective. Do not enable both approaches together without a controlled test. Do not infer a final USB port map from ACPI object names alone; perform physical USB mapping after macOS boots.
 
 ### CPU
 - DSDT contains 20 Processor objects: `\\_SB.PR00` through `\\_SB.PR19`.
@@ -65,7 +65,7 @@ Decision: include `SSDT-PLUG-DRTNIA.aml`. The 20 ACPI Processor declarations do 
 | SSDT-PLUG-DRTNIA.aml | Include | CPU path is \\_SB.PR00 |
 | SSDT-EC-USBX-DESKTOP.aml | Include | Native H_EC is hidden; desktop Fake EC + USBX required |
 | SSDT-AWAC.aml | Include | B460/Comet Lake clock fix; GNVS STAS selects legacy RTC |
-| SSDT-RHUB-B460M-PLUS.aml | Compile custom DSL first | Generic prebuilt AML path does not match this DSDT's XHC (no underscore) |
+| SSDT-RHUB-B460M-PLUS.aml | Do not inject with USBToolBox | USBToolBox 1.2.0 officially replaces the broken 400-series RHUB ACPI path; retain custom DSL as fallback only |
 | SSDT-PMC.aml | Do not include | Not required for Comet Lake desktop |
 | SSDT-RTC0*.aml | Do not include for now | Native legacy RTC exists and AWAC method selects it |
 | Raw DSDT.aml | Do not add | Firmware already supplies DSDT |
@@ -86,4 +86,10 @@ Decision: include `SSDT-PLUG-DRTNIA.aml`. The 20 ACPI Processor declarations do 
 - Dortania AWAC/RTC explanation: https://dortania.github.io/Getting-Started-With-ACPI/Universal/awac.html
 - Dortania USB mapping: https://dortania.github.io/OpenCore-Post-Install/usb/manual/manual.html
 
-This report records static analysis decisions. It is not a claim that an EFI has been built, compiled, boot-tested, or validated on the target machine.
+## 6. Current implementation override (2026-11-25)
+
+The later staging build selects USBToolBox 1.2.0 + the supplied UTBMap 1.1. The USBToolBox project documents that it ignores broken ACPI port definitions on 400-series Intel boards and replaces SSDT-RHUB. The current config therefore has three ACPI entries (PLUG, EC-USBX, AWAC) and no RHUB SSDT. The custom board-specific RHUB DSL remains archived as a fallback, not an enabled table.
+
+Official USBToolBox documentation: https://github.com/USBToolBox/kext
+
+This report records static analysis decisions and the later implementation override. It is not a claim that an EFI has been hardware boot-tested or that physical USB port behavior has been validated.
