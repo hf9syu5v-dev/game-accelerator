@@ -17,3 +17,5 @@ if ($LASTEXITCODE -ne 0) { throw "Deployment failed: $LASTEXITCODE" }
 # CI-triggered revision: validation is performed by validate-b460m-oc105-openusbkbd-deploy.yml.
 
 # Re-run CI after EFI root path correction.
+
+# Trigger root-path fixture validation.
