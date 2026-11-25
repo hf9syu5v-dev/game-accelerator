@@ -19,3 +19,5 @@ if ($LASTEXITCODE -ne 0) { throw "Deployment failed: $LASTEXITCODE" }
 # Re-run CI after EFI root path correction.
 
 # Trigger root-path fixture validation.
+
+# Trigger corrected Bash fixture test.
