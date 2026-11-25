@@ -18,7 +18,7 @@ try{
  $ds=@(Get-Disk|Where-Object{$_.FriendlyName -eq $Model -and $_.SerialNumber -and (($_.SerialNumber.Trim() -replace '\s','') -eq $Serial) -and $_.BusType -eq 'USB' -and $_.Size -ge 115GB -and $_.Size -le 125GB})
  if($ds.Count -ne 1){Fail "Safety stop: expected one matching USB, found $($ds.Count)."}
  $d=$ds[0];if($d.IsBoot -or $d.IsSystem -or $d.IsReadOnly -or $d.IsOffline){Fail 'Safety stop: target is boot/system/read-only/offline.'}
- $existingParts=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+ $existingParts=@(Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue)
  if($existingParts.Count -ne 0){Fail "Safety stop: target USB still has $($existingParts.Count) partition(s). Expected fully unallocated disk. No disk changes made."}
  $part=$null
  if(!(Test-Path -LiteralPath $Artifact -PathType Leaf)){Fail "Missing diagnostic artifact: $Artifact"}
