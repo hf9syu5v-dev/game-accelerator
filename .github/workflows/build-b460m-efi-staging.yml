@@ -342,6 +342,86 @@ jobs:
           test -s build/EFI/OC/OpenCore.efi
           test -s build/USB-BOOT-TEST-README.txt
 
+
+      # The panic log identifies SS04@14b00000 and a Genesys Logic 05e3:0610 USB 2.1 hub.
+      # Build a second, isolated diagnostic EFI that disables that physical USB3 port pair
+      # (HS04 + SS04) while retaining USBToolBox RHUB handling and all other config.
+      - name: Build targeted no-SS04 diagnostic EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp -a build build-no-ss04
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path("build-no-ss04/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist")
+          m = plistlib.loads(p.read_bytes())
+          ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          removed = {name: ports.pop(name) for name in ("HS04", "SS04")}
+          assert int.from_bytes(removed["HS04"]["port"], "little") == 4
+          assert int.from_bytes(removed["SS04"]["port"], "little") == 20
+          assert set(ports) == {"HS01","HS02","HS03","HS05","HS06","HS07","SS01","SS02","SS03"}
+          p.write_bytes(plistlib.dumps(m, fmt=plistlib.FMT_XML, sort_keys=True))
+          cfgp = Path("build-no-ss04/EFI/OC/config.plist")
+          cfg = plistlib.loads(cfgp.read_bytes())
+          assert cfg["Kernel"]["Quirks"]["PanicNoKextDump"] is False
+          cfgp.write_bytes(plistlib.dumps(cfg, fmt=plistlib.FMT_XML, sort_keys=True))
+          print("DIAGNOSTIC MAP: removed HS04 index 4 + SS04 index 20; all other ports unchanged")
+          PY
+          validator="$(find /tmp/opencore -type f -name ocvalidate -print -quit)"
+          "$validator" build-no-ss04/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root=Path("build-no-ss04/EFI/OC")
+          m=plistlib.loads((root/"Kexts/UTBMap.kext/Contents/Info.plist").read_bytes())
+          ports=m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert "HS04" not in ports and "SS04" not in ports
+          assert len(ports)==9
+          c=plistlib.loads((root/"config.plist").read_bytes())
+          assert c["Kernel"]["Quirks"]["PanicNoKextDump"] is False
+          assert c["Misc"]["Security"]["ScanPolicy"]==0x00200703
+          assert c["Misc"]["Boot"]["Timeout"]==0
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"]=="iMac20,1"
+          print("PASS: no-SS04 diagnostic EFI cross-file checks")
+          PY
+          {
+            echo "# B460M targeted USB diagnostic EFI"
+            echo
+            echo "- OpenCore 1.0.8 DEBUG"
+            echo "- Disabled physical USB port pair: HS04 (index 4) + SS04 (index 20)"
+            echo "- Reason: panic screenshot reports SS04@14b00000 enumeration failures and a 05e3:0610 Genesys Logic USB 2.1 hub immediately before AppleUSBHost power-change heap corruption"
+            echo "- USBToolBox remains enabled to retain Intel 400-series RHUB handling"
+            echo "- PanicNoKextDump=false for better panic diagnostics"
+            echo "- ScanPolicy remains 0x00200703; internal NVMe/SATA remain excluded"
+            echo "- Diagnostic candidate only; hardware verification is still required"
+            echo
+            find build-no-ss04/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
+          } > build-no-ss04/BUILD-MANIFEST.md
+          cat > build-no-ss04/USB-DIAGNOSTIC-README.txt <<'EOF'
+          TARGETED USB DIAGNOSTIC EFI
+          This separate EFI disables only the HS04/SS04 USB port pair.
+          The panic screenshots show SS04@14b00000 enumeration failures and
+          a Genesys Logic 05e3:0610 USB2.1 hub immediately before a kernel
+          heap use-after-free panic in the Apple USB/IOService power path.
+          USBToolBox remains enabled for Intel 400-series RHUB handling.
+          PanicNoKextDump is false to preserve diagnostic details.
+          ScanPolicy remains USB-only; internal NVMe/SATA boot scanning stays disabled.
+          This package is not hardware-verified. If the recovery USB itself is
+          connected through the disabled port pair, it may disappear after
+          macOS takes over USB. No disk is formatted or installed.
+          EOF
+          test -s build-no-ss04/EFI/BOOT/BOOTx64.efi
+          test -s build-no-ss04/EFI/OC/config.plist
+
+      - name: Upload targeted no-SS04 diagnostic EFI
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.8-DEBUG-USB-NO-SS04-DIAGNOSTIC
+          path: build-no-ss04/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload staging artifact
         uses: actions/upload-artifact@v4
         with:
