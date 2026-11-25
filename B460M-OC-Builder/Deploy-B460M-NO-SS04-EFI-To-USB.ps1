@@ -4,8 +4,7 @@ $ErrorActionPreference = "Stop"
 $ExpectedSerial = "000000123ADC"
 $ExpectedDiskSize = 128035676160
 $ExpectedEspGuid = "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}"
-$ArtifactId = "15023812255"
-$ArtifactApi = "https://api.github.com/repos/hf9syu5v-dev/game-accelerator/actions/artifacts/$ArtifactId/zip"
+$ArtifactZip = Join-Path $env:USERPROFILE "Downloads\B460M-NO-SS04-DIAGNOSTIC-ARTIFACT.zip"
 $Work = Join-Path $env:TEMP ("B460M-NO-SS04-" + [guid]::NewGuid().ToString("N"))
 $Mounted = $false
 $Drive = $null
@@ -39,9 +38,9 @@ try {
     if ($answer -cne "DEPLOY NO-SS04 EFI") { throw "Cancelled by user; no USB files changed." }
 
     New-Item -ItemType Directory -Path $Work -Force | Out-Null
-    $outer = Join-Path $Work "artifact.zip"
-    Write-Host "Downloading the verified GitHub Actions artifact..."
-    Invoke-WebRequest -Uri $ArtifactApi -OutFile $outer -Headers @{ "User-Agent" = "B460M-OC-Builder"; "Accept" = "application/vnd.github+json" } -UseBasicParsing
+    $outer = $ArtifactZip
+    if (-not (Test-Path -LiteralPath $outer)) { throw "Diagnostic artifact ZIP not found at $outer. Download it from the provided file link into your Downloads folder first." }
+    Write-Host "Using the downloaded diagnostic artifact ZIP..."
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $outerDir = Join-Path $Work "outer"
     [System.IO.Compression.ZipFile]::ExtractToDirectory($outer,$outerDir)
