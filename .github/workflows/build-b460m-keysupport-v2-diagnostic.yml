@@ -45,7 +45,6 @@ jobs:
           assert all(d["Path"] != "OpenUsbKbDxe.efi" for d in u["Drivers"])
           inp["KeySupport"] = True
           inp["KeySupportMode"] = "V2"
-          inp["KeySupportMode"] = "Auto"
           c["Misc"]["Boot"]["PollAppleHotKeys"] = False
           assert inp["KeySupport"] is True
           assert inp["KeySupportMode"] == "V2"
@@ -96,7 +95,7 @@ jobs:
           Base: exact SHA256-pinned RX570 VESA diagnostic EFI previously deployed.
           Keyboard input configuration:
           - UEFI Input -> KeySupport = True
-          - UEFI Input -> KeySupportMode = Auto (inactive while KeySupport is false)
+          - UEFI Input -> KeySupportMode = V2
           - Misc Boot -> PollAppleHotKeys = False
           - OpenUsbKbDxe.efi is not loaded and is absent.
 
