@@ -1,0 +1,170 @@
+name: Build OpenCore 1.0.5 verbose keyboard diagnostic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  build-verbose-keyboard:
+    runs-on: macos-latest
+    env:
+      PROJECT_TYPE: UEFI
+      FORCE_INSTALL: 1
+      HAS_OPENSSL_BUILD: 1
+      HAS_OPENSSL_W32BUILD: 0
+      WERROR: 1
+      JOB_TYPE: BUILD
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      HOMEBREW_NO_AUTO_UPDATE: 1
+    steps:
+      - name: Checkout OpenCorePkg 1.0.5 source
+        uses: actions/checkout@v4
+        with:
+          repository: acidanthera/OpenCorePkg
+          ref: 1.0.5
+          path: OpenCorePkg
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew tap FiloSottile/homebrew-musl-cross
+          brew install musl-cross openssl mingw-w64
+
+      - name: Enable keyboard scan diagnostics in OpenCore source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path("OpenCorePkg/Library/OcInputLib/Keycode/AIK.c")
+          s=p.read_text()
+          old='''      DEBUG ((
+        DEBUG_VERBOSE,
+        "AIK: Key scan 0x%X uni 0x%X Shift 0x%X toggle 0x%X at %Lu\\n",'''
+          new='''      DEBUG ((
+        DEBUG_INFO,
+        "AIK: Key scan 0x%X uni 0x%X Shift 0x%X toggle 0x%X at %Lu\\n",'''
+          if s.count(old)!=1:
+              raise SystemExit(f"Expected exactly one key-scan DEBUG_VERBOSE block, got {s.count(old)}")
+          p.write_text(s.replace(old,new))
+          print("PATCHED=AIK key scan log DEBUG_VERBOSE -> DEBUG_INFO")
+          PY
+          grep -n -A2 'AIK: Key scan' OpenCorePkg/Library/OcInputLib/Keycode/AIK.c
+
+      - name: Bootstrap official Acidanthera build environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$(/usr/bin/curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh)"
+          eval "$src"
+
+      - name: Build OpenCore DEBUG binaries
+        shell: bash
+        working-directory: OpenCorePkg
+        run: |
+          set -euo pipefail
+          ./build_duet.tool
+          ./build_oc.tool
+          find Binaries -maxdepth 1 -type f -name '*DEBUG*.zip' -print
+
+      - name: Assemble keyboard verbose diagnostic EFI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15063694125/zip \
+            -o baseline.zip
+          echo "f799c3b0be0a619230e1301f657f553e9f5db7edd7bd91ac9a4820c47442c38f  baseline.zip" | shasum -a 256 --check
+          mkdir baseline official-custom
+          unzip -oq baseline.zip -d baseline
+          custom_zip="$(find OpenCorePkg/Binaries -maxdepth 1 -type f -name '*DEBUG*.zip' -print -quit)"
+          test -n "$custom_zip"
+          unzip -oq "$custom_zip" -d official-custom
+          python3 - <<'PY'
+          import hashlib, plistlib, shutil
+          from pathlib import Path
+          configs=list(Path("baseline").glob("**/OC/config.plist"))
+          assert len(configs)==1,configs
+          oc=configs[0].parent
+          efi=oc.parent
+          candidates=list(Path("official-custom").glob("**/OC/OpenCore.efi"))
+          assert len(candidates)==1,candidates
+          source=candidates[0]
+          target=oc/"OpenCore.efi"
+          shutil.copy2(source,target)
+          digest=hashlib.sha256(target.read_bytes()).hexdigest()
+          assert digest==hashlib.sha256(source.read_bytes()).hexdigest()
+          c=plistlib.loads(configs[0].read_bytes())
+          c["UEFI"]["Input"]["KeySupport"]=True
+          c["UEFI"]["Input"]["KeySupportMode"]="Auto"
+          c["UEFI"]["Input"]["KeyFiltering"]=False
+          c["UEFI"]["AppleInput"]["AppleEvent"]="Auto"
+          c["UEFI"]["AppleInput"]["GraphicsInputMirroring"]=True
+          c["UEFI"]["Drivers"]=[d for d in c["UEFI"]["Drivers"] if d.get("Path")!="OpenUsbKbDxe.efi"]
+          (oc/"Drivers/OpenUsbKbDxe.efi").unlink(missing_ok=True)
+          d=c["Misc"]["Debug"]
+          d["AppleDebug"]=True; d["ApplePanic"]=False
+          d["DisplayLevel"]=2147483714; d["Target"]=65; d["SysReport"]=False
+          c["Misc"]["Security"]["HaltLevel"]=2147483648
+          configs[0].write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
+          out=Path("verbose-output/EFI")
+          shutil.copytree(efi,out)
+          (Path("verbose-output")/"DIAGNOSTIC-REPORT.txt").write_text(
+              "Custom OpenCore 1.0.5 DEBUG build\\n"
+              "Only OpenCore.efi rebuilt from official 1.0.5 source\\n"
+              "AIK key scan log promoted from DEBUG_VERBOSE to DEBUG_INFO\\n"
+              "KeySupport=Auto; AppleEvent=Auto; GraphicsInputMirroring=true\\n"
+              "Target=65 file log; DisplayLevel=2147483714\\n"
+              f"Custom OpenCore.efi SHA256={digest}\\n"
+          )
+          print("CUSTOM_OPENCORE_EFI_SHA256="+digest)
+          print("VERBOSE_KEY_SCAN_DIAGNOSTICS=ENABLED")
+          PY
+          cd verbose-output
+          zip -qr ../B460M-OpenCore-1.0.5-VERBOSE-Keyboard-Diagnostic.zip EFI DIAGNOSTIC-REPORT.txt
+          unzip -t ../B460M-OpenCore-1.0.5-VERBOSE-Keyboard-Diagnostic.zip
+
+      - name: Validate EFI config and paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          validator="$(find OpenCorePkg/Binaries -type f -name ocvalidate -o -name ocvalidate.linux | head -n 1)"
+          if [ -z "$validator" ]; then
+            validator="$(find official-custom -type f -name ocvalidate -o -name ocvalidate.linux | head -n 1)"
+          fi
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" verbose-output/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          e=Path("verbose-output/EFI")
+          c=plistlib.loads((e/"OC/config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupportMode"]=="Auto"
+          assert c["UEFI"]["AppleInput"]["GraphicsInputMirroring"] is True
+          assert c["Misc"]["Debug"]["Target"]==65
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (e/"OC/Drivers"/d["Path"]).is_file(),d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (e/"OC/ACPI"/a["Path"]).is_file(),a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (e/"OC/Kexts"/k["BundlePath"]).exists(),k["BundlePath"]
+          print("OCVALIDATE=PASS; ALL_ENABLED_PATHS=PASS")
+          PY
+
+      - name: Upload verbose keyboard diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.5-VERBOSE-Keyboard-Diagnostic
+          path: |
+            B460M-OpenCore-1.0.5-VERBOSE-Keyboard-Diagnostic.zip
+            verbose-output/DIAGNOSTIC-REPORT.txt
+          if-no-files-found: error
