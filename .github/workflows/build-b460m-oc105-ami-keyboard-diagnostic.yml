@@ -1,0 +1,128 @@
+name: B460M OpenCore 1.0.5 AMI keyboard input diagnostic
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-oc105-ami-keyboard-diagnostic.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact baseline EFI artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15063694125/zip \
+            -o baseline.zip
+          echo "f799c3b0be0a619230e1301f657f553e9f5db7edd7bd91ac9a4820c47442c38f  baseline.zip" | sha256sum --check
+          mkdir baseline
+          unzip -oq baseline.zip -d baseline
+          config="$(find baseline -type f -path '*/OC/config.plist' -print -quit)"
+          test -n "$config"
+          echo "BASELINE_CONFIG=$config" >> "$GITHUB_ENV"
+      - name: Download and verify official OpenCore 1.0.5 package
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip \
+            -o OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
+          mkdir official
+          unzip -oq OpenCore-1.0.5-DEBUG.zip -d official
+          validator="$(find official -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          echo "OCVALIDATE=$validator" >> "$GITHUB_ENV"
+      - name: Build isolated AMI input profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, shutil
+          from pathlib import Path
+          configs=list(Path("baseline").glob("**/OC/config.plist"))
+          assert len(configs)==1,configs
+          oc=configs[0].parent
+          efi=oc.parent
+          cfg=plistlib.loads(configs[0].read_bytes())
+          # Official OpenCore 1.0.5 Input properties: explicitly select AMI
+          # firmware handling for the builtin KeySupport implementation.
+          cfg["UEFI"]["Input"]["KeySupport"]=True
+          cfg["UEFI"]["Input"]["KeySupportMode"]="AMI"
+          cfg["UEFI"]["Drivers"]=[d for d in cfg["UEFI"]["Drivers"] if d.get("Path")!="OpenUsbKbDxe.efi"]
+          (oc/"Drivers/OpenUsbKbDxe.efi").unlink(missing_ok=True)
+          configs[0].write_bytes(plistlib.dumps(cfg,fmt=plistlib.FMT_XML,sort_keys=False))
+          assert cfg["UEFI"]["Input"]["KeySupport"] is True
+          assert cfg["UEFI"]["Input"]["KeySupportMode"]=="AMI"
+          assert not any(d.get("Path")=="OpenUsbKbDxe.efi" and d.get("Enabled") for d in cfg["UEFI"]["Drivers"])
+          assert not (oc/"Drivers/OpenUsbKbDxe.efi").exists()
+          out=Path("output/EFI")
+          shutil.copytree(efi,out)
+          print("PROFILE=BUILTIN_KEYSUPPORT_AMI")
+          print("DELTA=KeySupport true; KeySupportMode AMI; OpenUsbKbDxe removed")
+          print("NO_USB_MAP_ACPI_KEXT_SMBIOS_BOOT_ARGS_OR_RECOVERY_CHANGES")
+          PY
+      - name: Official ocvalidate 1.0.5 and path integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$OCVALIDATE" output/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          e=Path("output/EFI"); o=e/"OC"
+          c=plistlib.loads((o/"config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["UEFI"]["Input"]["KeySupportMode"]=="AMI"
+          assert not any(d.get("Path")=="OpenUsbKbDxe.efi" and d.get("Enabled") for d in c["UEFI"]["Drivers"])
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (o/"Drivers"/d["Path"]).is_file(),d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (o/"ACPI"/a["Path"]).is_file(),a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (o/"Kexts"/k["BundlePath"]).exists(),k["BundlePath"]
+          print("AMI_PROFILE_OFFICIAL_OCVALIDATE=PASS")
+          print("ALL_ENABLED_PATHS=PASS")
+          PY
+      - name: Package AMI diagnostic EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > output/DIAGNOSTIC-REPORT.txt <<'EOF'
+          B460M OpenCore 1.0.5 AMI keyboard diagnostic
+          Baseline: exact SHA256-pinned baseline artifact 15063694125.
+          Official configuration profile:
+            UEFI -> Input -> KeySupport = true
+            UEFI -> Input -> KeySupportMode = AMI
+            OpenUsbKbDxe.efi absent and not enabled
+          This is an isolated alternative to the OpenUsbKbDxe profile.
+          No ACPI, USB map, kext, SMBIOS, boot-args, Recovery or disk changes.
+          CI validates configuration and file integrity; actual keyboard behavior requires target hardware.
+          EOF
+          cd output
+          zip -qr ../B460M-OpenCore-1.0.5-KeySupport-AMI-Diagnostic.zip EFI DIAGNOSTIC-REPORT.txt
+          unzip -t ../B460M-OpenCore-1.0.5-KeySupport-AMI-Diagnostic.zip
+          sha256sum ../B460M-OpenCore-1.0.5-KeySupport-AMI-Diagnostic.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.5-KeySupport-AMI-Diagnostic
+          path: |
+            output/EFI/
+            output/DIAGNOSTIC-REPORT.txt
+          if-no-files-found: error
