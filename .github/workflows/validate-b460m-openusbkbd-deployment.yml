@@ -54,14 +54,17 @@ jobs:
             [xml]$cfg = Get-Content -LiteralPath (Join-Path $src 'OC\config.plist') -Raw
             $txt = $cfg.OuterXml
             if ($txt -notmatch '<key>KeySupport</key>\s*<false\s*/>' -or $txt -notmatch 'OpenUsbKbDxe.efi' -or $txt -notmatch '<key>PollAppleHotKeys</key>\s*<false\s*/>') { throw 'Keyboard configuration assertions failed.' }
-            $files = @(Get-ChildItem -LiteralPath $src -File -Recurse)
+            $srcRoot = (Get-Item -LiteralPath $src).FullName.TrimEnd([char]92)
+            $files = @(Get-ChildItem -LiteralPath $srcRoot -File -Recurse)
             $stage = Join-Path $w 'staging'
             New-Item -ItemType Directory -Path $stage | Out-Null
-            & robocopy $src $stage /E /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null
+            & robocopy $srcRoot $stage /E /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null
             $copyExit = $LASTEXITCODE
             if ($copyExit -ge 8) { throw "Robocopy staging failed with exit code $copyExit" }
             foreach ($f in $files) {
-              $relative = $f.FullName.Substring($src.Length).TrimStart([char]92)
+              $prefix = $srcRoot + [IO.Path]::DirectorySeparatorChar
+              if (!$f.FullName.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Source path escaped EFI root: $($f.FullName)" }
+              $relative = $f.FullName.Substring($prefix.Length)
               $d = Join-Path $stage $relative
               if (!(Test-Path -LiteralPath $d -PathType Leaf)) { throw "Staging file missing: $relative (expected $d)" }
               if ((Get-FileHash $f.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $d -Algorithm SHA256).Hash) { throw "Staging hash mismatch: $relative" }
