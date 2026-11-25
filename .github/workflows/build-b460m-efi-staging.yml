@@ -170,6 +170,21 @@ jobs:
           done
           ls -lh build/EFI/OC/ACPI
 
+      - name: Disassemble and sanity-check staged ACPI AML
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/b460m-acpi-disassembly
+          for name in SSDT-PLUG-DRTNIA SSDT-EC-USBX-DESKTOP SSDT-AWAC; do
+            aml="$GITHUB_WORKSPACE/build/EFI/OC/ACPI/$name.aml"
+            test -s "$aml"
+            (cd /tmp/b460m-acpi-disassembly && iasl -d "$aml")
+            dsl="/tmp/b460m-acpi-disassembly/$name.dsl"
+            test -s "$dsl"
+            grep -q "DefinitionBlock" "$dsl"
+            echo "PASS: $name.aml disassembled and parsed by ACPICA"
+          done
+
       - name: Build and validate hardware-specific config.plist candidate
         shell: bash
         run: |
