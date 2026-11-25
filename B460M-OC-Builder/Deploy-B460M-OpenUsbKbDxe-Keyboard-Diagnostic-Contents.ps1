@@ -42,15 +42,21 @@ try {
  [xml]$xml=Get-Content -LiteralPath $cfg -Raw
  $x=$xml.OuterXml
  if($x -notmatch '<key>KeySupport</key>\s*<false\s*/>' -or $x -notmatch 'OpenUsbKbDxe.efi' -or $x -notmatch '<key>PollAppleHotKeys</key>\s*<false\s*/>' -or $x -notmatch '-radvesa' -or $x -notmatch 'iMac20,1'){Stop-Deploy 'Config assertions failed.'}
- $files=@(Get-ChildItem -LiteralPath $src -File -Recurse)
+ $srcRoot=(Get-Item -LiteralPath $src).FullName.TrimEnd([char]92)
+ $files=@(Get-ChildItem -LiteralPath $srcRoot -File -Recurse)
  if($files.Count -lt 20){Stop-Deploy 'EFI file count suspicious.'}
  New-Item -ItemType Directory -Path $stage | Out-Null
- Get-ChildItem -LiteralPath $src -Force | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse}
- foreach($f in $files){$rel=$f.FullName.Substring($src.Length).TrimStart([char]92);$dst=Join-Path $stage $rel;if(!(Test-Path -LiteralPath $dst -PathType Leaf) -or (Get-Sha256 $dst) -ne (Get-Sha256 $f.FullName)){Stop-Deploy "Staging hash mismatch: $rel"}}
+ Get-ChildItem -LiteralPath $srcRoot -Force | ForEach-Object {Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse}
+ foreach($f in $files){
+  $prefix=$srcRoot+[IO.Path]::DirectorySeparatorChar
+  if(!$f.FullName.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){Stop-Deploy "Source path escaped EFI root: $($f.FullName)"}
+  $rel=$f.FullName.Substring($prefix.Length);$dst=Join-Path $stage $rel
+  if(!(Test-Path -LiteralPath $dst -PathType Leaf) -or (Get-Sha256 $dst) -ne (Get-Sha256 $f.FullName)){Stop-Deploy "Staging hash mismatch: $rel"}
+ }
  Write-Host "STAGING_SHA256=PASS; FILES=$($files.Count)" -ForegroundColor Green
  Rename-Item -LiteralPath $current -NewName $BackupName
  try {Rename-Item -LiteralPath $stage -NewName 'EFI'} catch {Rename-Item -LiteralPath $backup -NewName 'EFI';throw}
- foreach($f in $files){$rel=$f.FullName.Substring($src.Length).TrimStart([char]92);$dst=Join-Path $current $rel;if(!(Test-Path -LiteralPath $dst -PathType Leaf) -or (Get-Sha256 $dst) -ne (Get-Sha256 $f.FullName)){Stop-Deploy "Active EFI hash mismatch: $rel; old EFI preserved."}}
+ foreach($f in $files){$prefix=$srcRoot+[IO.Path]::DirectorySeparatorChar;$rel=$f.FullName.Substring($prefix.Length);$dst=Join-Path $current $rel;if(!(Test-Path -LiteralPath $dst -PathType Leaf) -or (Get-Sha256 $dst) -ne (Get-Sha256 $f.FullName)){Stop-Deploy "Active EFI hash mismatch: $rel; old EFI preserved."}}
  Write-Host ''
  Write-Host 'OPENUSBKBD_DIAGNOSTIC_DEPLOYMENT_SUCCESS' -ForegroundColor Green
  Write-Host 'ACTIVE_EFI=F:\EFI (KeySupport=false; OpenUsbKbDxe enabled)'
