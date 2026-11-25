@@ -106,8 +106,9 @@ jobs:
           official_driver="$(find official-oc105 -type f -path '*/X64/EFI/OC/Drivers/OpenUsbKbDxe.efi' -print -quit)"
           test -n "$validator" && test -n "$official_driver"
           chmod +x "$validator"
+          export OFFICIAL_DRIVER="$official_driver"
           python - <<'PY'
-          import hashlib, importlib.util, plistlib, tempfile
+          import hashlib, importlib.util, os, plistlib, tempfile
           from pathlib import Path
           p=Path('B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.py')
           spec=importlib.util.spec_from_file_location('deployer',p)
@@ -129,11 +130,10 @@ jobs:
               for k in cfg['Kernel']['Add']:
                   if k.get('Enabled'): assert (oc/'Kexts'/k['BundlePath']).exists(),k['BundlePath']
               h=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
-              assert h(oc/'Drivers/OpenUsbKbDxe.efi')==h(Path('$official_driver')), 'OpenUsbKbDxe differs from official 1.0.5 release'
+              assert h(oc/'Drivers/OpenUsbKbDxe.efi')==h(Path(os.environ['OFFICIAL_DRIVER'])), 'OpenUsbKbDxe differs from official 1.0.5 release'
               print('ARTIFACT_CONFIG_AND_ALL_ENABLED_PATHS=PASS')
               print('OFFICIAL_OPENUSBKBD_BINARY_HASH=PASS')
           PY
-          config="$(find /tmp -type f -path '*/EFI/OC/config.plist' -print -quit)"
           # Re-extract into a stable path for the official validator.
           mkdir -p official-validation
           unzip -q actual-diagnostic-artifact.zip -d official-validation
