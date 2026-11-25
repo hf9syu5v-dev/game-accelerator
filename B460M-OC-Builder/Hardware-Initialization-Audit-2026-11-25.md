@@ -72,6 +72,20 @@ The workflow generates config.plist during CI from the OpenCore 1.0.8 Sample.pli
 
 No config change was made by this audit because the current values are conservative and no evidence justifies adding device properties, audio layout IDs, forced ASPM or CPU spoofing.
 
+## 7A. Exact staged USB port map structure
+
+The independently inspected Run #38 artifact contains this exact map (hardware indices are zero-based as encoded by USBToolBox; the displayed names are HS/SS logical port names):
+
+| Logical port | Hardware index | Connector |
+|---|---:|---:|
+| HS01–HS04 | 1–4 | USB 3 |
+| HS05 | 9 | USB 2 |
+| HS06 | 10 | USB 2 |
+| HS07 | 11 | Internal (255) |
+| SS01–SS04 | 17–20 | USB 3 |
+
+There are 11 entries, 11 unique hardware indices, and `port-count=20`. CI now pins the exact names, indices and connector types so an accidental edit is detected. This is only a structural integrity check: it does not prove which physical rear/front-panel socket corresponds to each entry.
+
 ## 8. Remaining hardware gates
 
 1. A separate removable USB drive must be explicitly designated before any USB preparation. No internal disk is to be touched.
