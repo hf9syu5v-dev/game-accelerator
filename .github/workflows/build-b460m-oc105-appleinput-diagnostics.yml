@@ -1,0 +1,115 @@
+name: B460M OpenCore 1.0.5 AppleInput protocol diagnostics
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-oc105-appleinput-diagnostics.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        profile:
+          - name: BUILTIN_MIRROR_OFF
+            apple_event: Builtin
+            mirroring: false
+          - name: AUTO_MIRROR_ON
+            apple_event: Auto
+            mirroring: true
+    name: ${{ matrix.profile.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned baseline and official OpenCore 1.0.5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15063694125/zip -o baseline.zip
+          echo "f799c3b0be0a619230e1301f657f553e9f5db7edd7bd91ac9a4820c47442c38f  baseline.zip" | sha256sum --check
+          mkdir baseline
+          unzip -oq baseline.zip -d baseline
+          curl --fail --location --retry 3 https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip -o OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
+          mkdir official
+          unzip -oq OpenCore-1.0.5-DEBUG.zip -d official
+          validator="$(find official -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          echo "OCVALIDATE=$validator" >> "$GITHUB_ENV"
+      - name: Apply isolated AppleInput variables
+        env:
+          APPLE_EVENT: ${{ matrix.profile.apple_event }}
+          MIRRORING: ${{ matrix.profile.mirroring }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, plistlib, shutil
+          from pathlib import Path
+          files=list(Path("baseline").glob("**/OC/config.plist"))
+          assert len(files)==1,files
+          config=files[0]; oc=config.parent; efi=oc.parent
+          c=plistlib.loads(config.read_bytes())
+          c["UEFI"]["Input"]["KeySupport"]=True
+          c["UEFI"]["Input"]["KeySupportMode"]="AMI"
+          c["UEFI"]["Drivers"]=[d for d in c["UEFI"]["Drivers"] if d.get("Path")!="OpenUsbKbDxe.efi"]
+          (oc/"Drivers/OpenUsbKbDxe.efi").unlink(missing_ok=True)
+          c["UEFI"]["AppleInput"]["AppleEvent"]=os.environ["APPLE_EVENT"]
+          c["UEFI"]["AppleInput"]["GraphicsInputMirroring"]=os.environ["MIRRORING"]=="true"
+          config.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
+          out=Path("output/EFI"); shutil.copytree(efi,out)
+          print("KEYSUPPORT=AMI; OPENUSBKBDXE=ABSENT")
+          print("APPLE_EVENT="+os.environ["APPLE_EVENT"])
+          print("GRAPHICS_INPUT_MIRRORING="+os.environ["MIRRORING"])
+          PY
+      - name: Official ocvalidate and exact invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$OCVALIDATE" output/EFI/OC/config.plist
+          python3 - <<'PY'
+          import os, plistlib
+          from pathlib import Path
+          e=Path("output/EFI"); o=e/"OC"
+          c=plistlib.loads((o/"config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["UEFI"]["Input"]["KeySupportMode"]=="AMI"
+          assert c["UEFI"]["AppleInput"]["AppleEvent"]==os.environ["APPLE_EVENT"]
+          assert c["UEFI"]["AppleInput"]["GraphicsInputMirroring"]==(os.environ["MIRRORING"]=="true")
+          assert not any(d.get("Path")=="OpenUsbKbDxe.efi" and d.get("Enabled") for d in c["UEFI"]["Drivers"])
+          assert not (o/"Drivers/OpenUsbKbDxe.efi").exists()
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (o/"Drivers"/d["Path"]).is_file(),d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (o/"ACPI"/a["Path"]).is_file(),a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (o/"Kexts"/k["BundlePath"]).exists(),k["BundlePath"]
+          print("OFFICIAL_OCVALIDATE=PASS; ALL_ENABLED_PATHS=PASS")
+          PY
+      - name: Package diagnostic profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p output
+          printf 'OpenCore 1.0.5 AppleInput diagnostic\nKeySupport=AMI; OpenUsbKbDxe absent\nAppleEvent=%s\nGraphicsInputMirroring=%s\n' "${APPLE_EVENT}" "${MIRRORING}" > output/DIAGNOSTIC-REPORT.txt
+          cd output
+          zip -qr "../B460M-OpenCore-1.0.5-AppleInput-${{ matrix.profile.name }}.zip" EFI DIAGNOSTIC-REPORT.txt
+          unzip -t "../B460M-OpenCore-1.0.5-AppleInput-${{ matrix.profile.name }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.5-AppleInput-${{ matrix.profile.name }}
+          path: |
+            output/EFI/
+            output/DIAGNOSTIC-REPORT.txt
+          if-no-files-found: error
