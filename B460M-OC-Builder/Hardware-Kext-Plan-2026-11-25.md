@@ -10,6 +10,7 @@ Board: ASUS TUF GAMING B460M-PLUS, BIOS 1601 (user chose not to update)
 |---|---|---|
 | Motherboard | ASUS TUF GAMING B460M-PLUS | Intel 400-series / Comet Lake desktop ACPI |
 | BIOS | Version 1601 | Keep current; do not flash during EFI preparation |
+| BIOS iGPU settings | Primary Display Auto; iGPU Multi-Monitor Enabled; DVMT Pre-Allocated 512M; RC6 Enabled (from the uploaded ASUS BIOS screenshot) | iGPU is enabled in firmware; do not disable it. Actual iGPU PCI ID and whether macOS needs it for acceleration remain to be verified |
 | CPU | Intel Core i5-10500ES, 6 cores / 12 threads | Comet Lake family target; do not infer CPU identity from DSDT's 20 Processor objects |
 | CPU-Z | Family 6, Model 5, Extended Model A5, Stepping 0, Revision G0 | CPUID 0x000A0650 is a derived candidate, not a direct CPUID dump; no forced spoof until boot evidence |
 | GPU | XFX Radeon RX 570 4GB, Ellesmere / Polaris | Use native macOS AMD Polaris support plus WhateverGreen; monitor connected to RX 570 DisplayPort |
@@ -77,7 +78,7 @@ The display is connected to the RX 570 DisplayPort. Keep the discrete card as th
 - Use `OpenRuntime.efi` and `HfsPlus.efi` from the matching OpenCore 1.0.8 package. No unrelated drivers at first boot.
 - The WD SN720 Windows disk is excluded from all installation/partitioning instructions.
 
-## 7. Deferred until first successful macOS boot
+## 7. Firmware screenshot evidence\n\nThe repository screenshot `华硕 B460 核显开启页 02.png` shows: Primary Display = Auto, iGPU Multi-Monitor = Enabled, DVMT Pre-Allocated = 512M, RC6 = Enabled. Preserve these settings during the initial boot attempt. Do not change Primary Display from Auto without a concrete display-initialization problem.\n\n## 8. Deferred until first successful macOS boot
 
 1. USB port mapping using physical port-by-port tests, then create UTBMap.kext.
 2. Confirm audio codec detection and select the correct ALCS1200A layout for this ASUS board.
@@ -86,6 +87,6 @@ The display is connected to the RX 570 DisplayPort. Keep the discrete card as th
 5. Confirm I219-V Ethernet, HP EX900 Plus NVMe behavior and sleep/wake.
 6. Run the matching OpenCore 1.0.8 `ocvalidate` against the finished config.plist.
 
-## 8. Current boundary
+## 9. Current boundary
 
 This is a verified hardware and component plan. It is not a completed EFI. The serial-number fields, exact CPU emulation decision, audio layout, USB map and final config validation remain intentionally unset rather than guessed.
