@@ -286,7 +286,7 @@ jobs:
           unzip -t B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip
           python3 - <<'PY'
           from pathlib import Path
-          import zipfile
+          import zipfile, plistlib
           p=Path("B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip")
           with zipfile.ZipFile(p) as z:
               names=z.namelist()
