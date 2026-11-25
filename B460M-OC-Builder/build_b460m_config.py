@@ -183,7 +183,7 @@ need(misc, "Debug").update({
 need(misc, "Security").update({
     "AllowSetDefault": True,
     "AuthRestart": False,
-    "BlacklistAppleUpdate": False,
+    "BlacklistAppleUpdate": True,
     "DmgLoading": "Signed",
     "EnablePassword": False,
     "ExposeSensitiveData": 6,
