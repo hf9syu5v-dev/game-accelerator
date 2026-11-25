@@ -1,0 +1,100 @@
+name: Build OpenCore 1.0.5 Sequoia baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-opencore-105-baseline.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b460m-opencore-105-baseline
+  cancel-in-progress: false
+
+jobs:
+  baseline:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and verify official OpenCore 1.0.5 DEBUG
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip"
+          curl --fail --location --retry 3 "$url" -o /tmp/OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  /tmp/OpenCore-1.0.5-DEBUG.zip" | shasum -a 256 --check -
+          mkdir -p /tmp/opencore105 build/EFI/BOOT build/EFI/OC/Drivers build/EFI/OC/Tools build/Tools
+          unzip -q /tmp/OpenCore-1.0.5-DEBUG.zip -d /tmp/opencore105
+
+          for f in \
+            X64/EFI/BOOT/BOOTx64.efi \
+            X64/EFI/OC/OpenCore.efi \
+            X64/EFI/OC/Drivers/OpenRuntime.efi \
+            X64/EFI/OC/Tools/OpenShell.efi \
+            Docs/Sample.plist; do
+            test -s "/tmp/opencore105/$f"
+          done
+
+          cp /tmp/opencore105/X64/EFI/BOOT/BOOTx64.efi build/EFI/BOOT/
+          cp /tmp/opencore105/X64/EFI/OC/OpenCore.efi build/EFI/OC/
+          cp /tmp/opencore105/X64/EFI/OC/Drivers/OpenRuntime.efi build/EFI/OC/Drivers/
+          cp /tmp/opencore105/X64/EFI/OC/Tools/OpenShell.efi build/EFI/OC/Tools/
+          cp /tmp/opencore105/Docs/Sample.plist build/Tools/OpenCore-1.0.5-Sample.plist
+
+          validator="$(find /tmp/opencore105 -type f -name ocvalidate -print -quit)"
+          test -n "$validator"
+          cp "$validator" build/Tools/ocvalidate
+          chmod +x build/Tools/ocvalidate
+
+          echo "Official archive SHA256:"
+          shasum -a 256 /tmp/OpenCore-1.0.5-DEBUG.zip
+          echo "Staged binary SHA256:"
+          shasum -a 256 build/EFI/BOOT/BOOTx64.efi build/EFI/OC/OpenCore.efi build/EFI/OC/Drivers/OpenRuntime.efi build/EFI/OC/Tools/OpenShell.efi build/Tools/OpenCore-1.0.5-Sample.plist build/Tools/ocvalidate
+
+      - name: Parse the official Sample.plist and verify the matching validator
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path("build/Tools/OpenCore-1.0.5-Sample.plist")
+          config = plistlib.loads(p.read_bytes())
+          required = ["ACPI", "Booter", "DeviceProperties", "Kernel", "Misc", "NVRAM", "PlatformInfo", "UEFI"]
+          missing = [key for key in required if key not in config]
+          assert not missing, f"Sample.plist missing top-level sections: {missing}"
+          print("PASS: OpenCore 1.0.5 official Sample.plist parses and contains all major sections")
+          PY
+          build/Tools/ocvalidate --version || true
+          file build/Tools/ocvalidate
+          test -s build/Tools/ocvalidate
+
+      - name: Package baseline only — not a bootable EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > build/BASELINE-STATUS.txt <<'EOF'
+          OpenCore 1.0.5 DEBUG baseline package.
+          This artifact contains official OpenCore binaries, official Sample.plist and matching ocvalidate.
+          It does NOT contain a hardware-configured config.plist, ACPI, kexts or SMBIOS.
+          NOT BOOTABLE. DO NOT DEPLOY TO A PHYSICAL EFI PARTITION.
+          EOF
+          cd build
+          zip -qr ../OpenCore-1.0.5-Sequoia-Baseline-NOT-BOOTABLE.zip .
+          cd ..
+          shasum -a 256 OpenCore-1.0.5-Sequoia-Baseline-NOT-BOOTABLE.zip
+
+      - name: Upload baseline artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCore-1.0.5-Sequoia-Baseline-NOT-BOOTABLE
+          path: OpenCore-1.0.5-Sequoia-Baseline-NOT-BOOTABLE.zip
+          if-no-files-found: error
+          retention-days: 30
