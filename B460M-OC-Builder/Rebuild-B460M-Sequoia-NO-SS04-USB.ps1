@@ -70,8 +70,9 @@ try {
  Write-Host 'ALL PARTITIONS AND FILES ON THIS USB WILL BE ERASED.' -ForegroundColor Red
  Write-Host ('New GPT, 16GB FAT32 EFI System Partition, drive '+$Letter+':')
  Write-Host 'Internal disks WD SN720 and HP EX900 Plus are not targets.'
- $answer=Read-Host 'Type exactly REFORMAT LITEON 000000123ADC'
- if($answer -cne 'REFORMAT LITEON 000000123ADC'){Fail 'Cancelled; USB unchanged.'}
+ Write-Host 'Confirmation code: 43024' -ForegroundColor Yellow
+ $answer=Read-Host 'Enter 43024 to erase and rebuild this USB'
+ if($answer.Trim() -cne '43024'){Fail 'Cancelled; USB unchanged.'}
  $dp=Join-Path $Work 'diskpart.txt'
  @("select disk $($d.Number)",'clean','convert gpt','create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$Letter",'exit')|Set-Content $dp -Encoding ASCII
  $out=& diskpart.exe /s $dp 2>&1;$out|ForEach-Object{Write-Host $_};if($LASTEXITCODE -ne 0){Fail "DiskPart exit=$LASTEXITCODE"}
