@@ -1,0 +1,73 @@
+name: Validate B460M KeySupport V1 Python deployment
+
+on:
+  push:
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic.py"
+      - "B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic-Contents.ps1"
+      - ".github/workflows/validate-b460m-keysupport-v1-deployment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Windows PowerShell 5.1 parser validation
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = (Resolve-Path 'B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic-Contents.ps1').Path
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          'POWERSHELL_5_1_PARSE=PASS'
+
+      - name: Python syntax and static safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $py = 'B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic.py'
+          $ps = 'B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic-Contents.ps1'
+          python -m py_compile $py
+          $source = Get-Content -LiteralPath $py -Raw
+          $launcher = Get-Content -LiteralPath $ps -Raw
+          foreach ($forbidden in @('Clear-Disk','Initialize-Disk','New-Partition','Remove-Partition','Format-Volume','Set-Partition','Set-Disk','diskpart','clean all','format.com')) {
+            if ($source.Contains($forbidden) -or $launcher.Contains($forbidden)) { throw "Forbidden destructive command token: $forbidden" }
+          }
+          foreach ($required in @('000000123ADC','LITEON I T LCS-128L9S','128035676160','Get-Partition','Get-Disk','IsBoot','IsSystem','relative_to','sha256','EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC','EFI-PREVIOUS-OPENUSBKBD-UNSUPPORTED','BaseSystem.dmg','BaseSystem.chunklist','7116f1de9ddd6a2a1cc05ef4dd8ff84c99a918c3ce51f74a05ce724680a65e10')) {
+            if (!$source.Contains($required)) { throw "Missing safety/validation requirement: $required" }
+          }
+          if ($source.Contains('PENDING_BUILD_SHA256')) { throw 'Artifact SHA256 pin is incomplete.' }
+          if (!$launcher.Contains('RunAsAdministrator') -or !$launcher.Contains('LASTEXITCODE')) { throw 'PowerShell launcher privilege/exit checks missing.' }
+          if (!$launcher.Contains('PyManager\\python.exe')) { throw 'Previously verified PyManager Python path is not searched.' }
+          'PYTHON_SYNTAX=PASS'
+          'STATIC_DESTRUCTIVE_OPERATION_SCAN=PASS'
+          'USB_IDENTITY_AND_ROLLBACK_GUARDS=PASS'
+
+      - name: Python self-test (ZIP, staging, hashes, swap and rollback)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python 'B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic.py' --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Python self-test failed.' }
+
+      - name: Download and validate exact pinned EFI release
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keysupport-v1-diagnostic/B460M-KeySupport-V1-Diagnostic-EFI.zip'
+          $zip = Join-Path $env:TEMP 'B460M-KeySupport-V1-pinned.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          python 'B460M-OC-Builder/Deploy-B460M-KeySupport-V1-Diagnostic.py' --validate-artifact $zip
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned EFI artifact validation failed.' }
