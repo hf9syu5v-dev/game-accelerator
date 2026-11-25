@@ -36,6 +36,7 @@ Latest release metadata was checked against the official Acidanthera GitHub rele
 | AppleALC | 1.9.8 | Realtek audio | https://github.com/acidanthera/AppleALC/releases/tag/1.9.8 |
 | IntelMausi | 1.0.8 | Intel I219-V Ethernet | https://github.com/acidanthera/IntelMausi/releases/tag/1.0.8 |
 | NVMeFix | 1.1.3 | NVMe power management / compatibility | https://github.com/acidanthera/NVMeFix/releases/tag/1.1.3 |
+| USBToolBox | 1.2.0 | USB port-map injection and 400-series RHUB workaround | https://github.com/USBToolBox/kext/releases/tag/1.2.0 |
 
 ## 3. Initial Kext set and load order
 
@@ -47,6 +48,8 @@ Use RELEASE builds for the initial boot unless a diagnostic explicitly requires 
 4. AppleALC.kext
 5. IntelMausi.kext
 6. NVMeFix.kext
+7. USBToolBox.kext
+8. UTBMap.kext (user-supplied, codeless; after USBToolBox)
 
 VirtualSMC plugins:
 - SMCProcessor.kext: optional CPU sensor monitoring; may be added after the base boot is stable.
@@ -60,7 +63,7 @@ AppleALC's official `Resources/ALCS1200A/Info.plist` identifies codec ID 2816 (h
 
 Some layouts are board-specific (for example, layout 23 is documented for MSI B460I Gaming Edge WIFI; layout 50 is for Gigabyte B460M Aorus Pro). They must not be copied to this ASUS board by chipset similarity alone.
 
-Initial diagnostic choice: try `alcid=1` only as a provisional first test because it is the generic ALCS1200A 5/6-port map. If audio does not work or ports are mismatched, test other supported layouts after boot and record jack behavior. This is not yet a confirmed ASUS B460M-PLUS layout.
+Current staging decision: do not inject `alcid` or an audio layout ID yet. Although AppleALC supports ALCS1200A, a generic layout is not confirmed for this ASUS board. After first successful boot, inspect codec detection and test supported layouts systematically, recording each physical jack's behavior. The current generated config intentionally has no `alcid=1`.
 
 ## 5. Graphics decision
 
@@ -71,22 +74,22 @@ The display is connected to the RX 570 DisplayPort. Keep the discrete card as th
 ## 6. OpenCore configuration decisions (staging only)
 
 - SMBIOS candidate: `iMac20,1` (Comet Lake desktop, 6-core class). This is a candidate pending validation against the ES CPU's CPUID and macOS boot behavior.
-- Do not publish or commit generated SystemSerialNumber, MLB, SystemUUID or ROM. Generate unique values locally with GenSMBIOS and keep them private.
+- For the current staging/initial bring-up candidate, the user explicitly approved temporary test SystemSerialNumber, MLB, SystemUUID and ROM values. Do not treat these as permanent values or publish them outside this private project. After initial testing, the user will replace them locally with a fresh matching GenSMBIOS set.
 - Do not force `Kernel -> Emulate -> Cpuid1Data/Mask` yet. CPU-Z-derived CPUID 0x000A0650 is not a direct raw CPUID capture; first test native identity and inspect boot logs.
-- Initial boot-args can be diagnostic: `-v keepsyms=1 debug=0x100 alcid=1`. Remove or revise diagnostic flags after a stable boot.
+- Current staging boot-args are diagnostic and verbose; no audio layout argument is injected. Remove or revise diagnostic flags after a stable boot.
 - Do not add `agdpmod=pikera`, `-wegnoegpu`, `npci=0x2000`, `cpus=1`, or other symptom-specific flags without a matching observed problem.
 - Use `OpenRuntime.efi` and `HfsPlus.efi` from the matching OpenCore 1.0.8 package. No unrelated drivers at first boot.
 - The WD SN720 Windows disk is excluded from all installation/partitioning instructions.
 
 ## 7. Firmware screenshot evidence\n\nThe repository screenshot `华硕 B460 核显开启页 02.png` shows: Primary Display = Auto, iGPU Multi-Monitor = Enabled, DVMT Pre-Allocated = 512M, RC6 = Enabled. Preserve these settings during the initial boot attempt. Do not change Primary Display from Auto without a concrete display-initialization problem.\n\n## 8. Deferred until first successful macOS boot
 
-1. USB port mapping using physical port-by-port tests, then create UTBMap.kext.
+1. The supplied UTBMap.kext is already integrated in the current staging candidate and passes structural checks (11 mapped entries, port-count 20). Physical port-by-port behavior and USB 2/3 companion pairing still require testing on this exact motherboard; do not regenerate the map unless tests expose a concrete defect.
 2. Confirm audio codec detection and select the correct ALCS1200A layout for this ASUS board.
 3. Confirm CPU CPUID, power management and sleep/wake behavior; add CPU-specific workarounds only if logs justify them.
 4. Verify RX 570 acceleration, DisplayPort output and hardware decoding.
 5. Confirm I219-V Ethernet, HP EX900 Plus NVMe behavior and sleep/wake.
 6. Run the matching OpenCore 1.0.8 `ocvalidate` against the finished config.plist.
 
-## 9. Current boundary
+## 9. Current boundary and implementation status
 
-This is a verified hardware and component plan. It is not a completed EFI. The serial-number fields, exact CPU emulation decision, audio layout, USB map and final config validation remain intentionally unset rather than guessed.
+The repository now contains a CI-generated OpenCore 1.0.8 DEBUG staging candidate (Run #28) with a generated config.plist, the temporary test SMBIOS values approved by the user, the integrated supplied UTBMap, three selected ACPI tables and two UEFI drivers. Run #28 passed matching ocvalidate and expanded cross-file assertions. It remains explicitly NOT BOOTABLE: physical USB behavior, target-machine boot, CPU identity/power management, GPU acceleration, audio layout, Ethernet, NVMe and sleep/wake are not yet hardware-validated. The exact ES CPU CPUID decision remains evidence-driven; do not add speculative spoofing.
