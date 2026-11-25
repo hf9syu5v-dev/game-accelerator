@@ -7,7 +7,7 @@ $OCHash='3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6'
 $Work=Join-Path $env:TEMP ('B460M-Resume-'+[guid]::NewGuid().ToString('N'))
 $RecoveryCache=Join-Path $env:LOCALAPPDATA 'B460M-Sequoia-RecoveryCache'
 $BasicData='ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
-$espTemporarilyChanged=$false;$chosenLetter=$null
+$espTemporarilyChanged=$false;$chosenLetter=$null;$resumeExisting=$false;$resumePartitionNumber=$null
 function Fail([string]$s){throw $s}
 function Hash([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 try{
@@ -19,8 +19,21 @@ try{
  if($ds.Count -ne 1){Fail "Safety stop: expected one matching USB, found $($ds.Count)."}
  $d=$ds[0];if($d.IsBoot -or $d.IsSystem -or $d.IsReadOnly -or $d.IsOffline){Fail 'Safety stop: target is boot/system/read-only/offline.'}
  $existingParts=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition -Filter ("DiskNumber = "+[int]$d.Number) -ErrorAction Stop)
- if($existingParts.Count -ne 0){Fail "Safety stop: target USB still has $($existingParts.Count) partition(s). Expected fully unallocated disk. No disk changes made."}
  $part=$null
+ if($existingParts.Count -eq 0){
+  $resumeExisting=$false
+ }else{
+  # Resume only the exact intermediate layout from the previous run.
+  $pnow=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+  $msr=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -and $_.Size -ge 15MB -and $_.Size -le 17MB})
+  $data=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB -and $_.DriveLetter})
+  if($pnow.Count -ne 2 -or $msr.Count -ne 1 -or $data.Count -ne 1){Fail "Safety stop: USB has $($pnow.Count) partitions, not the exact recognized resumable layout. No disk changes made."}
+  $resumeLetter=[string]$data[0].DriveLetter
+  $vol=Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='"+$resumeLetter+":'") -ErrorAction Stop
+  if(!$vol -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA'){Fail ("Safety stop: existing partition "+$resumeLetter+": is not the expected FAT32 volume. No disk changes made.")}
+  $resumeExisting=$true;$resumePartitionNumber=[int]$data[0].PartitionNumber
+  Write-Host ("RESUME_EXISTING_USB_LAYOUT: MSR+FAT32; DRIVE="+$resumeLetter+":") -ForegroundColor Yellow
+ }
  if(!(Test-Path -LiteralPath $Artifact -PathType Leaf)){Fail "Missing diagnostic artifact: $Artifact"}
  New-Item -ItemType Directory $Work -Force|Out-Null
  Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -63,23 +76,29 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  @('import importlib.util, sys','s=sys.argv[1]','spec=importlib.util.spec_from_file_location("macrecovery",s)','m=importlib.util.module_from_spec(spec)','spec.loader.exec_module(m)','m.verify_image(sys.argv[2],sys.argv[3])')|Set-Content $verify -Encoding ASCII
  & $pyexe @pyargs $verify $mr[0].FullName $dmg $chunk;if($LASTEXITCODE -ne 0){Fail 'Apple chunklist verification failed.'}
  Write-Host 'APPLE_RECOVERY_CHUNKLIST_VERIFICATION_OK' -ForegroundColor Green
- Write-Host 'STEP 4: Create a temporary FAT32 Basic-Data volume on the verified empty USB...'
- # Disk was required to be completely unallocated above. Create a Windows-mountable
- # Basic Data partition first; it is converted to ESP only after all file checks pass.
- $used=@(Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue|ForEach-Object{([string]$_.DeviceID).TrimEnd(':')})
- foreach($candidate in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $candidate){$chosenLetter=$candidate;break}}
- if([string]::IsNullOrWhiteSpace($chosenLetter)){Fail 'No free drive letter available.'}
- $dp=Join-Path $Work 'create-usb.txt'
- @("select disk $($d.Number)",'clean','convert gpt','create partition primary size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$chosenLetter",'exit')|Set-Content -LiteralPath $dp -Encoding ASCII
- $dpout=& diskpart.exe /s $dp 2>&1
- $dpout|ForEach-Object{Write-Host ([string]$_)}
- if($LASTEXITCODE -ne 0){Fail "DiskPart failed with exit code $LASTEXITCODE."}
- if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
- Start-Sleep -Seconds 3
- $newParts=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
- if($newParts.Count -ne 1){Fail "Expected exactly one newly-created partition; found $($newParts.Count)."}
- $part=$newParts[0]
- if($part.Size -lt 15GB -or $part.Size -gt 17GB -or [string]$part.DriveLetter -ne $chosenLetter){Fail "New USB partition identity/size/drive-letter verification failed."}
+ Write-Host 'STEP 4: Identify or resume the temporary FAT32 Basic-Data volume...'
+ if($resumeExisting){
+  $chosenLetter=[string](Get-Partition -DiskNumber $d.Number -PartitionNumber $resumePartitionNumber -ErrorAction Stop).DriveLetter
+  $part=Get-Partition -DiskNumber $d.Number -PartitionNumber $resumePartitionNumber -ErrorAction Stop
+  Write-Host ("RESUMING_VERIFIED_PARTITION: "+$chosenLetter+": (no clean, no format)") -ForegroundColor Yellow
+ }else{
+  # Fresh build only when the target disk is completely unallocated.
+  $used=@(Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue|ForEach-Object{([string]$_.DeviceID).TrimEnd(':')})
+  foreach($candidate in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $candidate){$chosenLetter=$candidate;break}}
+  if([string]::IsNullOrWhiteSpace($chosenLetter)){Fail 'No free drive letter available.'}
+  $dp=Join-Path $Work 'create-usb.txt'
+  @("select disk $($d.Number)",'clean','convert gpt','create partition primary size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$chosenLetter",'exit')|Set-Content -LiteralPath $dp -Encoding ASCII
+  $dpout=& diskpart.exe /s $dp 2>&1
+  $dpout|ForEach-Object{Write-Host ([string]$_)}
+  if($LASTEXITCODE -ne 0){Fail "DiskPart failed with exit code $LASTEXITCODE."}
+  if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
+  Start-Sleep -Seconds 3
+  $newParts=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+  $dataParts=@($newParts|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB -and [string]$_.DriveLetter -eq $chosenLetter})
+  if($dataParts.Count -ne 1){Fail "Expected one 16GB Basic-Data partition with drive "+$chosenLetter+"; found "+$dataParts.Count+"."}
+  $part=$dataParts[0]
+ }
+ if($part.Size -lt 15GB -or $part.Size -gt 17GB -or [string]$part.DriveLetter -ne $chosenLetter){Fail "USB partition identity/size/drive-letter verification failed."}
  $espTemporarilyChanged=$true
  $root=$chosenLetter+':\';$logical=$null
  for($i=1;$i -le 15;$i++){
