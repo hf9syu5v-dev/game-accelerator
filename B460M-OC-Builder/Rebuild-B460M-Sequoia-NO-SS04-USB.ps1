@@ -57,7 +57,7 @@ try {
  $localPair=$null
  # First inspect the authorized USB itself; its previous successful build may already contain Recovery.
  $targetParts=@(Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue)
- foreach($tp in $targetParts){$tv=$tp | Get-Volume -ErrorAction SilentlyContinue;if($tv -and $tv.DriveLetter){$candidate=Join-Path ($tv.DriveLetter+':\\') 'com.apple.recovery.boot';if((Test-Path (Join-Path $candidate 'BaseSystem.dmg') -PathType Leaf) -and (Test-Path (Join-Path $candidate 'BaseSystem.chunklist') -PathType Leaf)){$localPair=$candidate;break}}}
+ foreach($tp in $targetParts){$tv=$tp | Get-Volume -ErrorAction SilentlyContinue;if($tv -and $tv.DriveLetter){$candidate=Join-Path ($tv.DriveLetter+':\') 'com.apple.recovery.boot';if((Test-Path (Join-Path $candidate 'BaseSystem.dmg') -PathType Leaf) -and (Test-Path (Join-Path $candidate 'BaseSystem.chunklist') -PathType Leaf)){$localPair=$candidate;break}}}
  $searchRoots=@((Join-Path $env:USERPROFILE 'Downloads'),(Join-Path $env:USERPROFILE 'Desktop'),(Join-Path $env:USERPROFILE 'Documents'))
  if(!$localPair){foreach($sr in $searchRoots){if(Test-Path $sr){$hit=Get-ChildItem -LiteralPath $sr -Filter 'BaseSystem.dmg' -File -Recurse -ErrorAction SilentlyContinue | Where-Object{Test-Path (Join-Path $_.DirectoryName 'BaseSystem.chunklist') -PathType Leaf} | Select-Object -First 1;if($hit){$localPair=$hit.DirectoryName;break}}}}
  if($localPair){
