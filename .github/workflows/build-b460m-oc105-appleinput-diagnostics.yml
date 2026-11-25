@@ -139,6 +139,29 @@ jobs:
               if k.get("Enabled"): assert (o/"Kexts"/k["BundlePath"]).exists(),k["BundlePath"]
           print("OFFICIAL_OCVALIDATE=PASS; ALL_ENABLED_PATHS=PASS")
           PY
+      - name: Emit firmware input routing audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<PY
+          import plistlib, json
+          from pathlib import Path
+          c=plistlib.loads(Path('output/EFI/OC/config.plist').read_bytes())
+          u=c['UEFI']
+          report={
+            'UEFI.Input':u.get('Input',{}),
+            'UEFI.AppleInput':u.get('AppleInput',{}),
+            'UEFI.Drivers':u.get('Drivers',[]),
+            'UEFI.ConnectDrivers':u.get('ConnectDrivers'),
+            'UEFI.Quirks':u.get('Quirks',{}),
+            'UEFI.ProtocolOverrides':u.get('ProtocolOverrides',{}),
+            'Misc.Boot':c.get('Misc',{}).get('Boot',{}),
+            'USB-related enabled kexts':[{'BundlePath':k.get('BundlePath'),'Enabled':k.get('Enabled'),'ExecutablePath':k.get('ExecutablePath')} for k in c.get('Kernel',{}).get('Add',[]) if any(x in k.get('BundlePath','').lower() for x in ('usb','xhci','utb'))],
+            'USB-related ACPI':[{'Path':a.get('Path'),'Enabled':a.get('Enabled')} for a in c.get('ACPI',{}).get('Add',[]) if any(x in a.get('Path','').lower() for x in ('usb','ssdt'))],
+          }
+          print('=== FIRMWARE INPUT ROUTING AUDIT ===')
+          print(json.dumps(report,indent=2,sort_keys=True))
+          PY
       - name: Package diagnostic profile
         shell: bash
         run: |
