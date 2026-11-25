@@ -67,13 +67,12 @@ jobs:
             "OC/Drivers/OpenRuntime.efi": "OpenRuntime.efi",
             "OC/Drivers/HfsPlus.efi": "HfsPlus.efi",
           }
-          official_root=Path("official")
+          official_efi=Path("official/X64/EFI")
           for deployed_rel, name in checks.items():
               deployed=efi/deployed_rel
-              candidates=list(official_root.rglob(name))
+              official=official_efi/("BOOT/"+name if deployed_rel.startswith("BOOT/") else "OC/"+("Drivers/"+name if "/Drivers/" in deployed_rel else name))
               assert deployed.is_file(),f"DEPLOYED_MISSING: {deployed_rel}"
-              assert len(candidates)==1,(name,candidates)
-              official=candidates[0]
+              assert official.is_file(),f"OFFICIAL_X64_MISSING: {official}"
               def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
               a,b=sha(deployed),sha(official)
               print(f"{deployed_rel}: deployed={a} official={b}")
