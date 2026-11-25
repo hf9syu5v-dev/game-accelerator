@@ -106,7 +106,7 @@ need(kernel, "Quirks").update({
     "AppleXcpmCfgLock": True,
     "DisableIoMapper": False,
     "DisableLinkeditJettison": True,
-    "PanicNoKextDump": True,
+    "PanicNoKextDump": False,
     "PowerTimeoutKernelPanic": True,
     "SetApfsTrimTimeout": 0,
     "XhciPortLimit": False,
