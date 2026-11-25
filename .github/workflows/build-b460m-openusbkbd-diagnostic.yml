@@ -1,0 +1,138 @@
+name: Build B460M OpenUsbKbDxe keyboard diagnostic EFI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-b460m-openusbkbd-diagnostic.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and verify the exact deployed RX570 VESA EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip" \
+            -o base.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  base.zip" | shasum -a 256 --check -
+          unzip -q base.zip -d base
+          test -s base/EFI/OC/config.plist
+          test -s base/EFI/BOOT/BOOTx64.efi
+
+      - name: Add OpenUsbKbDxe and switch keyboard input method only
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
+          mkdir -p /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          driver="$(find /tmp/oc -type f -name OpenUsbKbDxe.efi -print -quit)"
+          test -n "$driver"
+          install -m 0644 "$driver" base/EFI/OC/Drivers/OpenUsbKbDxe.efi
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p=Path("base/EFI/OC/config.plist")
+          c=plistlib.loads(p.read_bytes())
+          u=c["UEFI"]
+          inp=u["Input"]
+          assert inp["KeySupport"] is True
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert all(x["Path"] != "OpenUsbKbDxe.efi" for x in u["Drivers"])
+          inp["KeySupport"]=False
+          u["Drivers"].append({
+            "Arguments":"",
+            "Comment":"USB keyboard input diagnostic; OpenUsbKbDxe",
+            "Enabled":True,
+            "HideVerbose":False,
+            "LoadEarly":False,
+            "Path":"OpenUsbKbDxe.efi"
+          })
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert inp["KeySupport"] is False
+          assert sum(1 for x in u["Drivers"] if x["Path"]=="OpenUsbKbDxe.efi" and x["Enabled"])==1
+          p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=True))
+          print("PASS: KeySupport=False; PollAppleHotKeys=False; OpenUsbKbDxe enabled")
+          PY
+
+      - name: Validate with matching OpenCore 1.0.8 ocvalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" base/EFI/OC/config.plist
+          test -s base/EFI/OC/Drivers/OpenUsbKbDxe.efi
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root=Path("base/EFI/OC")
+          c=plistlib.loads((root/"config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is False
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          d=[x for x in c["UEFI"]["Drivers"] if x["Path"]=="OpenUsbKbDxe.efi" and x["Enabled"]]
+          assert len(d)==1 and (root/"Drivers/OpenUsbKbDxe.efi").is_file()
+          assert "-radvesa" in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
+          m=plistlib.loads((root/"Kexts/UTBMap.kext/Contents/Info.plist").read_bytes())
+          ports=m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert "HS04" in ports and "SS04" in ports
+          print("PASS: keyboard driver, config references, existing diagnostic args and USB map")
+          PY
+
+      - name: Package and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > base/OPENUSBKBD-DIAGNOSTIC-README.txt <<'EOF'
+          B460M OpenUsbKbDxe keyboard-input diagnostic EFI
+
+          Base: exact SHA256-pinned RX570 VESA diagnostic EFI already deployed.
+          Keyboard-path-only changes:
+          - UEFI Input -> KeySupport = False
+          - UEFI Drivers -> OpenUsbKbDxe.efi enabled
+          - Misc Boot -> PollAppleHotKeys remains False
+
+          All other settings, ACPI, kexts, USB map, SMBIOS and boot arguments are retained.
+          This tests the alternate OpenCore USB keyboard driver path. It is diagnostic only.
+          Use Reset NVRAM once from the OpenCore picker before testing if available.
+          Do not change BIOS Secure Boot keys, partitions, Recovery, or internal disks.
+          EOF
+          {
+            echo "# B460M OpenUsbKbDxe keyboard diagnostic"
+            echo "- Base SHA256: fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf"
+            echo "- Only keyboard-path change: KeySupport=false and OpenUsbKbDxe enabled"
+            echo "- PollAppleHotKeys remains false"
+            echo "- OpenCore 1.0.8 matching ocvalidate passed"
+            echo
+            find base/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
+          } > base/BUILD-MANIFEST.md
+          cd base
+          zip -qr ../B460M-OpenUsbKbDxe-Keyboard-Diagnostic-EFI.zip EFI BUILD-MANIFEST.md OPENUSBKBD-DIAGNOSTIC-README.txt
+          cd ..
+          unzip -t B460M-OpenUsbKbDxe-Keyboard-Diagnostic-EFI.zip
+          shasum -a 256 B460M-OpenUsbKbDxe-Keyboard-Diagnostic-EFI.zip
+
+      - name: Publish separate diagnostic release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-openusbkbd-keyboard-diagnostic
+          name: B460M OpenUsbKbDxe keyboard diagnostic EFI
+          target_commitish: ${{ github.sha }}
+          files: B460M-OpenUsbKbDxe-Keyboard-Diagnostic-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
