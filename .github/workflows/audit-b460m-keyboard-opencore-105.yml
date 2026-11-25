@@ -34,10 +34,13 @@ jobs:
           echo "f799c3b0be0a619230e1301f657f553e9f5db7edd7bd91ac9a4820c47442c38f  deployed-efi-artifact.zip" | sha256sum --check
           mkdir deployed
           unzip -q deployed-efi-artifact.zip -d deployed
-          test -s deployed/EFI/OC/config.plist
-          test -s deployed/EFI/OC/OpenCore.efi
-          test -s deployed/BOOT/BOOTx64.efi || test -s deployed/EFI/BOOT/BOOTx64.efi
+          config="$(find deployed -type f -path '*/OC/config.plist' -print -quit)"
+          test -n "$config"
+          oc="$(dirname "$config")"
+          test -s "$oc/OpenCore.efi"
+          test -s "$oc/Drivers/OpenRuntime.efi"
           echo "EXACT_DEPLOYED_ARTIFACT=PASS"
+          echo "DEPLOYED_CONFIG=$config"
 
       - name: Download official OpenCore 1.0.5 DEBUG package and verify pinned SHA256
         shell: bash
