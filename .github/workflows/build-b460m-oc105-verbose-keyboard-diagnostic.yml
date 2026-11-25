@@ -65,6 +65,13 @@ jobs:
           # ocbuild's bootstrap script intentionally references optional unset variables.
           # Keep errexit/pipefail, but do not enable nounset while evaluating upstream code.
           set -eo pipefail
+          # GitHub's macos-15 image can inherit a stale DEVELOPER_DIR pointing
+          # at an Xcode bundle that is no longer installed. Resolve the active
+          # developer directory through xcode-select before invoking xcrun.
+          unset DEVELOPER_DIR
+          export DEVELOPER_DIR="$(xcode-select -p)"
+          test -d "$DEVELOPER_DIR"
+          xcrun --find clang
           src="$(/usr/bin/curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh)"
           eval "$src"
 
