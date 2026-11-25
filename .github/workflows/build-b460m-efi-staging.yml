@@ -161,12 +161,29 @@ jobs:
           assert c["Booter"]["Quirks"]["DevirtualiseMmio"] is True
           assert c["Booter"]["Quirks"]["SetupVirtualMap"] is False
           assert c["Booter"]["Quirks"]["ProtectUefiServices"] is True
-          assert len(c["Kernel"]["Add"]) == 8
-          assert [x["BundlePath"] for x in c["Kernel"]["Add"]][-2:] == ["USBToolBox.kext", "UTBMap.kext"]
+          expected_kexts = [
+              "Lilu.kext", "VirtualSMC.kext", "WhateverGreen.kext", "AppleALC.kext",
+              "IntelMausi.kext", "NVMeFix.kext", "USBToolBox.kext", "UTBMap.kext",
+          ]
+          assert [x["BundlePath"] for x in c["Kernel"]["Add"]] == expected_kexts
+          assert all(x["Enabled"] and x["Arch"] == "x86_64" and x["PlistPath"] == "Contents/Info.plist" for x in c["Kernel"]["Add"])
+          assert c["Kernel"]["Add"][-2]["ExecutablePath"] == "Contents/MacOS/USBToolBox"
           assert c["Kernel"]["Add"][-1]["ExecutablePath"] == ""
-          assert len(c["ACPI"]["Add"]) == 3
+          assert c["Kernel"]["Add"][-2]["Enabled"] and c["Kernel"]["Add"][-1]["Enabled"]
+          assert c["Kernel"]["Quirks"]["XhciPortLimit"] is False
+          assert c["Kernel"]["Quirks"]["DisableIoMapper"] is False
+          assert c["Kernel"]["Quirks"]["AppleXcpmCfgLock"] is True
+          expected_acpi = ["SSDT-PLUG-DRTNIA.aml", "SSDT-EC-USBX-DESKTOP.aml", "SSDT-AWAC.aml"]
+          assert [x["Path"] for x in c["ACPI"]["Add"]] == expected_acpi
+          assert all(x["Enabled"] for x in c["ACPI"]["Add"])
+          assert all((Path("build/EFI/OC/ACPI") / x["Path"]).is_file() for x in c["ACPI"]["Add"])
           assert all(x["Path"] != "SSDT-RHUB-B460M-PLUS.aml" for x in c["ACPI"]["Add"])
-          print(f"config.plist parsed: {p.stat().st_size} bytes")
+          expected_drivers = ["OpenRuntime.efi", "HfsPlus.efi"]
+          assert [x["Path"] for x in c["UEFI"]["Drivers"]] == expected_drivers
+          assert all(x["Enabled"] and (Path("build/EFI/OC/Drivers") / x["Path"]).is_file() for x in c["UEFI"]["Drivers"])
+          assert c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"].startswith("-v ")
+          assert c["DeviceProperties"]["Add"]["PciRoot(0x0)/Pci(0x2,0x0)"]["AAPL,ig-platform-id"] == bytes.fromhex("0300C89B")
+          print(f"config.plist parsed and cross-checked against staged files: {p.stat().st_size} bytes")
           PY
 
       - name: Produce staging manifest and safety notice
