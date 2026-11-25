@@ -13,3 +13,5 @@ $exe=$candidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType L
 if (!$exe) { $cmd=Get-Command py.exe -ErrorAction SilentlyContinue; if ($cmd) { & $cmd.Source -3 $py; if ($LASTEXITCODE -ne 0) { throw "Deployment failed: $LASTEXITCODE" }; exit 0 }; throw 'Python 3 not found; no disk changes made.' }
 & $exe $py
 if ($LASTEXITCODE -ne 0) { throw "Deployment failed: $LASTEXITCODE" }
+
+# CI-triggered revision: validation is performed by validate-b460m-oc105-openusbkbd-deploy.yml.
