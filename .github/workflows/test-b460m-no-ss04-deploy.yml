@@ -41,6 +41,39 @@ jobs:
           Write-Host ('ADD_PARTITION_ACCESS_PATH_PARAMETERS=' + (($add.Parameters.Keys | Sort-Object) -join ','))
           Write-Host ('REMOVE_PARTITION_ACCESS_PATH_PARAMETERS=' + (($remove.Parameters.Keys | Sort-Object) -join ','))
           Write-Host 'STORAGE_PARAMETER_AUDIT=PASS'
+      - name: Exercise real ESP access-path operations on a disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vhd = Join-Path $env:TEMP 'no-ss04-esp-test.vhdx'
+          $dp = Join-Path $env:TEMP 'no-ss04-esp-test.txt'
+          @(
+            "create vdisk file=`"$vhd`" maximum=128 type=expandable"
+            "select vdisk file=`"$vhd`""
+            "attach vdisk"
+            "convert gpt"
+            "create partition efi size=100"
+            "format fs=fat32 quick label=ESPTEST"
+            "assign letter=R"
+          ) | Set-Content -Path $dp -Encoding ASCII
+          try {
+            diskpart /s $dp
+            $part = Get-Partition -DriveLetter R -ErrorAction Stop
+            if ($part.GptType.Trim('{}').ToLowerInvariant() -ne 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b') { throw 'VHD partition is not ESP type' }
+            Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'R:\' -ErrorAction Stop
+            Add-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'Z:\' -ErrorAction Stop
+            if (-not (Test-Path 'Z:\')) { throw 'Real Storage API did not mount VHD ESP at Z:\' }
+            Set-Content 'Z:\mount-probe.txt' 'real-storage-api-ok'
+            if ((Get-Content 'Z:\mount-probe.txt' -Raw).Trim() -ne 'real-storage-api-ok') { throw 'VHD mounted path read/write failed' }
+            Remove-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'Z:\' -ErrorAction Stop
+            Add-PartitionAccessPath -DiskNumber $part.DiskNumber -PartitionNumber $part.PartitionNumber -AccessPath 'R:\' -ErrorAction Stop
+            Write-Host 'REAL_STORAGE_ESP_MOUNT_UNMOUNT=PASS'
+          } finally {
+            @("select vdisk file=`"$vhd`"","detach vdisk") | Set-Content -Path $dp -Encoding ASCII
+            diskpart /s $dp | Out-Null
+            Remove-Item $vhd,$dp -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Verify ZIP extraction overloads
         shell: powershell
         run: |
