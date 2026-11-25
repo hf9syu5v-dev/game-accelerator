@@ -285,10 +285,15 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit
-          path: downloaded-artifact
+      - name: Download immutable pinned DEBUG artifact for deployer validation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloaded-artifact
+          curl --fail --location --retry 3 -H "Authorization: Bearer ${GH_TOKEN}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15069512044/zip -o downloaded-artifact/B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip
+          echo "979b20840a8ac437562ed793f020ceef5f1a4c8740354ceb154cdbf8bde36c90  downloaded-artifact/B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip" | sha256sum --check
       - name: Validate deployer syntax, artifact checksum, and EFI safety invariants
         shell: bash
         run: |
