@@ -1,0 +1,73 @@
+name: Validate B460M OpenUsbKbDxe deployment script
+
+on:
+  push:
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic-Contents.ps1"
+      - ".github/workflows/validate-b460m-openusbkbd-deployment.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell 5.1 parser and static safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic-Contents.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Error }
+          $s = Get-Content -LiteralPath $p -Raw
+          $forbidden = @('Clear-Disk','Initialize-Disk','New-Partition','Remove-Partition','Format-Volume','Set-Partition','Set-Disk','diskpart','clean all')
+          foreach ($word in $forbidden) { if ($s -match [regex]::Escape($word)) { throw "Forbidden destructive command token: $word" } }
+          foreach ($required in @('000000123ADC','LITEON I T LCS-128L9S','128035676160','8a9758328f1c032c83963d955b5e05faa734dc41d1e79c06f7267e08de5ec77f','OpenUsbKbDxe.efi','KeySupport','PollAppleHotKeys','com.apple.recovery.boot','Get-Partition','Get-Disk','Rename-Item')) {
+            if ($s -notmatch [regex]::Escape($required)) { throw "Missing required guard/assertion: $required" }
+          }
+          if ($s -notmatch 'BusType\s+-ne\s+''USB''' -or $s -notmatch '\$disk\.IsBoot' -or $s -notmatch '\$disk\.IsSystem') { throw 'Target disk safety identity checks missing.' }
+          'POWERSHELL_5_1_PARSE=PASS'
+          'STATIC_DESTRUCTIVE_OPERATION_SCAN=PASS'
+          'TARGET_IDENTITY_GUARDS=PASS'
+      - name: Artifact SHA256, archive and staging-copy simulation
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-openusbkbd-keyboard-diagnostic/B460M-OpenUsbKbDxe-Keyboard-Diagnostic-EFI.zip'
+          $expected = '8a9758328f1c032c83963d955b5e05faa734dc41d1e79c06f7267e08de5ec77f'
+          $w = Join-Path $env:TEMP ('B460M-CI-' + [guid]::NewGuid().ToString('N'))
+          try {
+            New-Item -ItemType Directory -Path $w | Out-Null
+            $z = Join-Path $w 'artifact.zip'
+            Invoke-WebRequest -Uri $url -OutFile $z -UseBasicParsing
+            if ((Get-FileHash $z -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Artifact SHA256 mismatch.' }
+            Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $w 'src')
+            $src = Join-Path (Join-Path $w 'src') 'EFI'
+            foreach ($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Drivers\OpenUsbKbDxe.efi','OC\Kexts\UTBMap.kext\Contents\Info.plist')) {
+              if (!(Test-Path -LiteralPath (Join-Path $src $rel) -PathType Leaf)) { throw "Missing artifact file: $rel" }
+            }
+            [xml]$cfg = Get-Content -LiteralPath (Join-Path $src 'OC\config.plist') -Raw
+            $txt = $cfg.OuterXml
+            if ($txt -notmatch '<key>KeySupport</key><false\s*/>' -or $txt -notmatch 'OpenUsbKbDxe.efi' -or $txt -notmatch '<key>PollAppleHotKeys</key><false\s*/>') { throw 'Keyboard configuration assertions failed.' }
+            $files = @(Get-ChildItem -LiteralPath $src -File -Recurse)
+            $stage = Join-Path $w 'staging'
+            New-Item -ItemType Directory -Path $stage | Out-Null
+            Get-ChildItem -LiteralPath $src -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse }
+            foreach ($f in $files) {
+              $rel = $f.FullName.Substring($src.Length).TrimStart([char]92)
+              $d = Join-Path $stage $rel
+              if (!(Test-Path -LiteralPath $d -PathType Leaf)) { throw "Staging file missing: $rel" }
+              if ((Get-FileHash $f.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $d -Algorithm SHA256).Hash) { throw "Staging hash mismatch: $rel" }
+            }
+            "ARTIFACT_SHA256=PASS"
+            "EFI_STRUCTURE_AND_KEYBOARD_CONFIG=PASS"
+            "TEMP_STAGING_COPY_SHA256=PASS; FILES=$($files.Count)"
+            "PHYSICAL_DISKS_TOUCHED=0"
+          } finally {
+            if (Test-Path $w) { Remove-Item $w -Recurse -Force }
+          }
