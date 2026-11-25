@@ -80,7 +80,6 @@ jobs:
             exit 1
           fi
           chmod +x "$validator"
-          "$validator" --version
           "$validator" build/EFI/OC/config.plist
           python3 - <<'PY'
           import plistlib
