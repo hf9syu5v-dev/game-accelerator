@@ -1,0 +1,135 @@
+name: Build B460M native UEFI keyboard V1 diagnostic EFI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-b460m-keysupport-v1-diagnostic.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and verify the exact deployed RX570 VESA EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip" \
+            -o base.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  base.zip" | shasum -a 256 --check -
+          unzip -q base.zip -d base
+          test -s base/EFI/OC/config.plist
+          test -s base/EFI/BOOT/BOOTx64.efi
+
+      - name: Force native UEFI Simple Text Input protocol V1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path("base/EFI/OC/config.plist")
+          c = plistlib.loads(p.read_bytes())
+          u = c["UEFI"]
+          inp = u["Input"]
+          assert inp["KeySupport"] is True
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert all(d["Path"] != "OpenUsbKbDxe.efi" for d in u["Drivers"])
+          inp["KeySupportMode"] = "V1"
+          assert inp["KeySupport"] is True
+          assert inp["KeySupportMode"] == "V1"
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert all(d["Path"] != "OpenUsbKbDxe.efi" for d in u["Drivers"])
+          p.write_bytes(plistlib.dumps(c, fmt=plistlib.FMT_XML, sort_keys=True))
+          print("KEYBOARD_INPUT=KeySupport:true; KeySupportMode:V1; PollAppleHotKeys:false")
+          print("OPENUSBKBD_DRIVER=ABSENT")
+          PY
+
+      - name: Validate with matching OpenCore 1.0.8 ocvalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
+          mkdir -p /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" base/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root = Path("base/EFI/OC")
+          c = plistlib.loads((root/"config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["UEFI"]["Input"]["KeySupportMode"] == "V1"
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert all(d["Path"] != "OpenUsbKbDxe.efi" for d in c["UEFI"]["Drivers"])
+          assert not (root/"Drivers/OpenUsbKbDxe.efi").exists()
+          assert "-radvesa" in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          for x in c["Kernel"]["Add"]: assert (root/"Kexts"/x["BundlePath"]).exists(), x["BundlePath"]
+          for x in c["ACPI"]["Add"]: assert (root/"ACPI"/x["Path"]).exists(), x["Path"]
+          for x in c["UEFI"]["Drivers"]: assert (root/"Drivers"/x["Path"]).exists(), x["Path"]
+          print("PASS: V1 input protocol, driver references, kexts, ACPI, SMBIOS and VESA args")
+          PY
+
+      - name: Package and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > base/KEYSUPPORT-V1-DIAGNOSTIC-README.txt <<'EOF'
+          B460M native UEFI keyboard V1 diagnostic EFI
+
+          Base: exact SHA256-pinned RX570 VESA diagnostic EFI previously deployed.
+          Keyboard input configuration:
+          - UEFI Input -> KeySupport = True
+          - UEFI Input -> KeySupportMode = V1
+          - Misc Boot -> PollAppleHotKeys = False
+          - OpenUsbKbDxe.efi is not loaded and is absent.
+
+          V1 explicitly uses EFI_SIMPLE_TEXT_INPUT_PROTOCOL, rather than the modern
+          EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL selected by Auto on some firmware.
+          This is a single-variable diagnostic change from the prior native
+          KeySupport configuration. All other ACPI, kexts, USB map, SMBIOS,
+          boot arguments and RX570 VESA isolation settings are retained.
+
+          This is diagnostic only; it does not claim successful physical boot.
+          No disk partition, Recovery file, BIOS setting or internal disk is changed.
+          EOF
+          {
+            echo "# B460M native UEFI KeySupport V1 diagnostic EFI"
+            echo "- Base SHA256: fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf"
+            echo "- Only input-mode change: KeySupportMode=V1 (KeySupport=true)"
+            echo "- PollAppleHotKeys=false; OpenUsbKbDxe absent"
+            echo "- OpenCore 1.0.8 matching ocvalidate passed"
+            echo
+            find base/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
+          } > base/BUILD-MANIFEST.md
+          cd base
+          zip -qr ../B460M-KeySupport-V1-Diagnostic-EFI.zip EFI BUILD-MANIFEST.md KEYSUPPORT-V1-DIAGNOSTIC-README.txt
+          cd ..
+          unzip -t B460M-KeySupport-V1-Diagnostic-EFI.zip
+          shasum -a 256 B460M-KeySupport-V1-Diagnostic-EFI.zip
+
+      - name: Publish separate diagnostic release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-keysupport-v1-diagnostic
+          name: B460M native UEFI KeySupport V1 diagnostic EFI
+          target_commitish: ${{ github.sha }}
+          files: B460M-KeySupport-V1-Diagnostic-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
