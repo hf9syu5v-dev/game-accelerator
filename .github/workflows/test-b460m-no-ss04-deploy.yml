@@ -138,7 +138,7 @@ jobs:
             function Get-Disk { [pscustomobject]@{ Number=1; SerialNumber='000000123ADC'; FriendlyName='LITEON I T LCS-128L9S'; Size=128035676160L; IsBoot=$false; IsSystem=$false; PartitionStyle='GPT' } }
             function Get-Partition { [pscustomobject]@{ GptType='{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'; Size=16777216000L } }
             function Get-Volume { param($Partition) if ($Partition) { [pscustomobject]@{ FileSystem='FAT32' } } else { @() } }
-            function Add-PartitionAccessPath { param($DiskNumber,$PartitionNumber,$AccessPath) if ($AccessPath -cne 'Z:\\' -and $AccessPath -cne 'Y:\\' -and $AccessPath -cne 'X:\\' -and $AccessPath -cne 'W:\\' -and $AccessPath -cne 'V:\\' -and $AccessPath -cne 'U:\\' -and $AccessPath -cne 'T:\\' -and $AccessPath -cne 'S:\\' -and $AccessPath -cne 'R:\\') { throw ('Malformed AccessPath: ' + $AccessPath) }; $letter=$AccessPath.Substring(0,1); New-PSDrive -Name $letter -PSProvider FileSystem -Root $global:UsbRoot -Scope Global | Out-Null }
+            function Add-PartitionAccessPath { param($DiskNumber,$PartitionNumber,$AccessPath) if ($AccessPath -notmatch '^[A-Z]:\\$') { throw ('Malformed AccessPath: ' + $AccessPath) }; $letter=$AccessPath.Substring(0,1); New-PSDrive -Name $letter -PSProvider FileSystem -Root $global:UsbRoot -Scope Global | Out-Null }
             function Remove-PartitionAccessPath { param($DiskNumber,$PartitionNumber,$AccessPath,$ErrorAction) $letter=$AccessPath.Substring(0,1); Remove-PSDrive -Name $letter -Force -ErrorAction SilentlyContinue }
             function Read-Host { param($Prompt) 'DEPLOY NO-SS04 EFI' }
             & 'B460M-OC-Builder/Deploy-B460M-NO-SS04-EFI-To-USB.ps1'
