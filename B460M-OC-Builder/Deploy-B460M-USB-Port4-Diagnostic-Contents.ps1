@@ -1,3 +1,4 @@
+# Validated as a separate USB port 4 diagnostic; existing EFI is preserved.
 #requires -RunAsAdministrator
 [CmdletBinding()]
 param()
