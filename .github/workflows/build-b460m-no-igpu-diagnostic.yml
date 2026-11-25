@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   diagnostic-efi:
-    runs-on: macos-14
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Check out repository
@@ -73,9 +73,14 @@ jobs:
           echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
           mkdir -p /tmp/oc
           unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
-          validator="$(find /tmp/oc -type f -name ocvalidate -print -quit)"
-          test -n "$validator"
+          validator="$(find /tmp/oc -type f -name 'ocvalidate.linux' -print -quit)"
+          if [ -z "$validator" ]; then
+            echo "ERROR: OpenCore 1.0.8 release archive contains no native Linux ocvalidate binary."
+            find /tmp/oc -type f -iname '*ocvalidate*' -print
+            exit 1
+          fi
           chmod +x "$validator"
+          "$validator" --version
           "$validator" build/EFI/OC/config.plist
           python3 - <<'PY'
           import plistlib
