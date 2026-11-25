@@ -1,0 +1,158 @@
+name: Build B460M OpenCore staging EFI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
+      - ".github/workflows/build-b460m-efi-staging.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-staging:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install ACPICA compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y acpica-tools
+
+      - name: Prepare EFI directory structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/EFI/BOOT
+          mkdir -p build/EFI/OC/ACPI
+          mkdir -p build/EFI/OC/Drivers
+          mkdir -p build/EFI/OC/Tools
+          mkdir -p build/EFI/OC/Kexts
+          mkdir -p build/Tools
+
+      - name: Download and verify OpenCore 1.0.8 DEBUG
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip"
+          curl --fail --location --retry 3 "$url" -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | sha256sum --check -
+          mkdir -p /tmp/opencore
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/opencore
+          test -s /tmp/opencore/X64/EFI/BOOT/BOOTx64.efi
+          test -s /tmp/opencore/X64/EFI/OC/OpenCore.efi
+          test -s /tmp/opencore/X64/EFI/OC/Drivers/OpenRuntime.efi
+          test -s /tmp/opencore/X64/EFI/OC/Tools/OpenShell.efi
+          cp /tmp/opencore/X64/EFI/BOOT/BOOTx64.efi build/EFI/BOOT/
+          cp /tmp/opencore/X64/EFI/OC/OpenCore.efi build/EFI/OC/
+          cp /tmp/opencore/X64/EFI/OC/Drivers/OpenRuntime.efi build/EFI/OC/Drivers/
+          cp /tmp/opencore/X64/EFI/OC/Tools/OpenShell.efi build/EFI/OC/Tools/
+          cp /tmp/opencore/Docs/Sample.plist build/Tools/OpenCore-1.0.8-Sample.plist
+          sha256sum build/EFI/BOOT/BOOTx64.efi build/EFI/OC/OpenCore.efi build/EFI/OC/Drivers/OpenRuntime.efi build/EFI/OC/Tools/OpenShell.efi
+
+      - name: Download HfsPlus driver from pinned commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://raw.githubusercontent.com/acidanthera/OcBinaryData/640e7e9240938f2529e725351e1e1150dc3569db/Drivers/HfsPlus.efi"
+          curl --fail --location --retry 3 "$url" -o build/EFI/OC/Drivers/HfsPlus.efi
+          echo "A55B5FFF36578864BA6792C4C6369C71F6F35B61DD5A853DDF8583CD36C31D8F  build/EFI/OC/Drivers/HfsPlus.efi" | sha256sum --check -
+
+      - name: Download and stage required kext releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage_kext() {
+            local name="$1" version="$2" url="$3" bundle="$4"
+            local zip="/tmp/${name}-${version}.zip"
+            local dest="build/EFI/OC/Kexts/${bundle}"
+            curl --fail --location --retry 3 "$url" -o "$zip"
+            mkdir -p "/tmp/kext-${name}"
+            unzip -q "$zip" -d "/tmp/kext-${name}"
+            mapfile -t found < <(find "/tmp/kext-${name}" -type d -name "$bundle" -print)
+            if [ "${#found[@]}" -ne 1 ]; then
+              echo "Expected exactly one $bundle in $name archive; found ${#found[@]}" >&2
+              exit 1
+            fi
+            test -s "${found[0]}/Contents/Info.plist"
+            cp -a "${found[0]}" "$dest"
+            echo "STAGED: $bundle $version"
+          }
+          stage_kext Lilu 1.7.2 https://github.com/acidanthera/Lilu/releases/download/1.7.2/Lilu-1.7.2-RELEASE.zip Lilu.kext
+          stage_kext VirtualSMC 1.3.8 https://github.com/acidanthera/VirtualSMC/releases/download/1.3.8/VirtualSMC-1.3.8-RELEASE.zip VirtualSMC.kext
+          stage_kext WhateverGreen 1.7.1 https://github.com/acidanthera/WhateverGreen/releases/download/1.7.1/WhateverGreen-1.7.1-RELEASE.zip WhateverGreen.kext
+          stage_kext AppleALC 1.9.8 https://github.com/acidanthera/AppleALC/releases/download/1.9.8/AppleALC-1.9.8-RELEASE.zip AppleALC.kext
+          stage_kext IntelMausi 1.0.8 https://github.com/acidanthera/IntelMausi/releases/download/1.0.8/IntelMausi-1.0.8-RELEASE.zip IntelMausi.kext
+          stage_kext NVMeFix 1.1.3 https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip NVMeFix.kext
+
+      - name: Compile and validate board-specific RHUB SSDT
+        shell: bash
+        run: |
+          set -euo pipefail
+          source="B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.dsl"
+          test -s "$source"
+          iasl -tc "$source"
+          generated="${source%.dsl}.aml"
+          test -s "$generated"
+          cp "$generated" build/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.aml
+          iasl -d build/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.aml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("build/EFI/OC/ACPI/SSDT-RHUB-B460M-PLUS.aml")
+          b = p.read_bytes()
+          assert len(b) >= 36, "AML shorter than ACPI header"
+          assert b[:4] == b"SSDT", f"Unexpected ACPI signature: {b[:4]!r}"
+          declared = int.from_bytes(b[4:8], "little")
+          assert declared == len(b), f"Length mismatch: header={declared}, actual={len(b)}"
+          assert sum(b) % 256 == 0, "ACPI checksum is invalid"
+          print(f"RHUB AML OK: {len(b)} bytes; checksum=0")
+          PY
+
+      - name: Copy verified repository ACPI tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="B460M-OC-Builder/EFI/EFI/OC/ACPI"
+          for file in SSDT-PLUG-DRTNIA.aml SSDT-EC-USBX-DESKTOP.aml SSDT-AWAC.aml; do
+            test -s "$src/$file"
+            cp "$src/$file" build/EFI/OC/ACPI/
+          done
+          ls -lh build/EFI/OC/ACPI
+
+      - name: Produce staging manifest and safety notice
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "# B460M OpenCore staging build"
+            echo
+            echo "- OpenCore: 1.0.8 DEBUG"
+            echo "- Kexts: Lilu 1.7.2; VirtualSMC 1.3.8; WhateverGreen 1.7.1; AppleALC 1.9.8; IntelMausi 1.0.8; NVMeFix 1.1.3"
+            echo "- ACPI: PLUG, EC-USBX, AWAC, and compiled board-specific RHUB"
+            echo "- Drivers: OpenRuntime.efi and HfsPlus.efi"
+            echo "- Status: STAGING ONLY; NOT BOOTABLE"
+            echo
+            echo "No config.plist is included. SMBIOS identifiers are intentionally not generated."
+            echo "USB port mapping is not complete. No installer, disk image, or physical EFI write is included."
+            echo
+            echo "## SHA-256"
+            sha256sum build/EFI/BOOT/BOOTx64.efi build/EFI/OC/OpenCore.efi build/EFI/OC/Drivers/*.efi build/EFI/OC/ACPI/*.aml
+          } > build/BUILD-MANIFEST.md
+          cat > build/DO-NOT-BOOT.txt <<'EOF'
+          This is an incomplete staging EFI, not a bootable OpenCore configuration.
+          No config.plist is included. Do not use it to boot or install macOS.
+          Hardware-specific config.plist, SMBIOS setup, OC validation, USB mapping,
+          and real-hardware testing are still outstanding.
+          EOF
+          test ! -e build/EFI/OC/config.plist
+
+      - name: Upload staging artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.8-DEBUG-STAGING-NOT-BOOTABLE
+          path: build/
+          if-no-files-found: error
+          retention-days: 14
