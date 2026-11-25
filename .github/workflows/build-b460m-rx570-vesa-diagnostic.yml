@@ -1,0 +1,137 @@
+name: Build B460M RX570 VESA isolation diagnostic EFI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-b460m-rx570-vesa-diagnostic.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download and verify the exact deployed USB-port-4 diagnostic EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-usbport4-diagnostic/B460M-USB-Port4-Diagnostic-EFI.zip" \
+            -o base.zip
+          echo "c22727abdbac0e98e3849cb776ae85dfacb0c1a67db9c678a61785b0a23c3afb  base.zip" | shasum -a 256 --check -
+          unzip -q base.zip -d base
+          test -s base/EFI/OC/config.plist
+          test -s base/EFI/OC/Kexts/WhateverGreen.kext/Contents/Info.plist
+          test -s base/EFI/BOOT/BOOTx64.efi
+
+      - name: Add only the AMD VESA diagnostic boot argument
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p = Path("base/EFI/OC/config.plist")
+          c = plistlib.loads(p.read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          nv = c["NVRAM"]["Add"][guid]
+          args = nv["boot-args"].split()
+          assert "-wegnoigpu" in args
+          assert "-wegnoegpu" not in args
+          assert "-radvesa" not in args
+          nv["boot-args"] = " ".join(args + ["-radvesa"])
+          p.write_bytes(plistlib.dumps(c, fmt=plistlib.FMT_XML, sort_keys=True))
+          print("BOOT_ARGS:", nv["boot-args"])
+          print("PASS: only -radvesa added; UHD 630 remains disabled; RX 570 remains present")
+          PY
+
+      - name: Validate with matching OpenCore 1.0.8 ocvalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
+          mkdir -p /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" base/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root = Path("base/EFI/OC")
+          c = plistlib.loads((root/"config.plist").read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          args = c["NVRAM"]["Add"][guid]["boot-args"].split()
+          assert "-radvesa" in args and "-wegnoigpu" in args
+          assert "-wegnoegpu" not in args
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          m = plistlib.loads((root/"Kexts/UTBMap.kext/Contents/Info.plist").read_bytes())
+          ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert "HS04" in ports and "SS04" in ports and len(ports) == 11
+          for x in c["Kernel"]["Add"]: assert (root/"Kexts"/x["BundlePath"]).exists(), x["BundlePath"]
+          for x in c["ACPI"]["Add"]: assert (root/"ACPI"/x["Path"]).exists(), x["Path"]
+          for x in c["UEFI"]["Drivers"]: assert (root/"Drivers"/x["Path"]).exists(), x["Path"]
+          print("PASS: config references, USB map, SMBIOS, and diagnostic args")
+          PY
+
+      - name: Package and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > base/RX570-VESA-DIAGNOSTIC-README.txt <<'EOF'
+          B460M-PLUS RX 570 VESA ISOLATION DIAGNOSTIC EFI
+
+          Base: exact SHA256-pinned USB-port-4 diagnostic EFI already deployed.
+          Only config change: add -radvesa to NVRAM boot-args.
+          Retained: -wegnoigpu, RX 570 enabled, USBToolBox + UTBMap with HS04/SS04,
+          existing ACPI/kexts/drivers, iMac20,1 test SMBIOS and all other settings.
+
+          Purpose:
+          WhateverGreen documents -radvesa as disabling AMD video acceleration completely.
+          The RX 570 remains the display adapter but uses an unaccelerated display path.
+          If macOS Setup GUI now appears and input works, investigate RX 570 acceleration/
+          framebuffer initialization and then restore acceleration with a targeted fix.
+          If the same system-wide freeze persists, the RX 570 acceleration path is less likely.
+
+          Before testing, use OpenCore's Reset NVRAM entry once, then boot this EFI.
+          This clears stored NVRAM variables; it does not erase any disk or partition.
+          If Reset NVRAM is not listed, do not improvise or change BIOS Secure Boot keys.
+
+          This is a diagnostic EFI, not a claim of hardware success. No internal disks,
+          partitions, recovery files, or USB partition layout are modified by this build.
+          EOF
+          {
+            echo "# B460M RX570 VESA diagnostic EFI"
+            echo "- Base: USB-port-4 diagnostic release, SHA256 c22727abdbac0e98e3849cb776ae85dfacb0c1a67db9c678a61785b0a23c3afb"
+            echo "- Single change: add -radvesa"
+            echo "- RX 570 remains enabled; UHD 630 remains disabled"
+            echo "- OpenCore 1.0.8 matching ocvalidate passed"
+            echo
+            find base/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
+          } > base/BUILD-MANIFEST.md
+          cd base
+          zip -qr ../B460M-RX570-VESA-Diagnostic-EFI.zip EFI BUILD-MANIFEST.md RX570-VESA-DIAGNOSTIC-README.txt
+          cd ..
+          unzip -t B460M-RX570-VESA-Diagnostic-EFI.zip
+          shasum -a 256 B460M-RX570-VESA-Diagnostic-EFI.zip
+
+      - name: Publish separate diagnostic release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-rx570-vesa-diagnostic
+          name: B460M RX 570 VESA isolation diagnostic EFI
+          target_commitish: ${{ github.sha }}
+          files: B460M-RX570-VESA-Diagnostic-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
