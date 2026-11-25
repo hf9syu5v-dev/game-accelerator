@@ -58,4 +58,18 @@ Before a first boot:
 3. Never write to or repartition the internal WD SN720 Windows disk.
 4. Do not call this artifact bootable until target-machine testing and a separate approved candidate build are complete.
 
+
+## Follow-up review: USB map and CPU evidence
+
+A direct read of the supplied `UTBMap.kext/Contents/Info.plist` confirms 11 entries:
+- HS01–HS04 use port indices 1–4 and connector type 3.
+- HS05 and HS06 use indices 9 and 10 with connector type 0.
+- HS07 uses index 11 with connector type 255.
+- SS01–SS04 use indices 17–20 and connector type 3.
+- Declared port-count is 20.
+
+These are structural facts only. The repository contains no evidence that these indices were physically mapped on this exact B460M-PLUS board. Do not treat the map as hardware-verified. The 2.4/5-Gbps companion pairing and case/front-panel connector types must be checked on the target machine.
+
+A read-only Windows PowerShell 5.1+ helper was added at [Read-B460M-CPU-Info.ps1](Read-B460M-CPU-Info.ps1). It collects WMI CPU identity and topology fields without changing BIOS, EFI, configuration or disks. Its WMI ProcessorId prefix is a useful cross-check, not a substitute for a direct CPUID instruction capture. The user must run it on the target B460M Windows installation and review the resulting local report before sharing.
+
 This audit records build and archive verification only; it does not certify hardware compatibility or bootability.
