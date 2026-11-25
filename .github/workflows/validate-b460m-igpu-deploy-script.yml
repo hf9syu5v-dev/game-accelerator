@@ -1,9 +1,9 @@
-name: Validate B460M iGPU EFI deployment script
+name: Validate B460M Sequoia USB deployment script
 
 on:
   push:
     paths:
-      - "B460M-OC-Builder/Deploy-B460M-iGPU-Isolation-EFI-To-USB.ps1"
+      - "B460M-OC-Builder/Deploy-B460M-Sequoia-USB-Contents.ps1"
       - ".github/workflows/validate-b460m-igpu-deploy-script.yml"
   workflow_dispatch:
 
@@ -11,36 +11,69 @@ permissions:
   contents: read
 
 jobs:
-  powershell-51-parse:
+  powershell-51-download-and-parse:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Parse script and enforce disk-safety guardrails
+
+      - name: Parse deployment script with Windows PowerShell 5.1
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $path = 'B460M-OC-Builder/Deploy-B460M-iGPU-Isolation-EFI-To-USB.ps1'
+          $path = 'B460M-OC-Builder/Deploy-B460M-Sequoia-USB-Contents.ps1'
           $tokens = $null
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | Format-List | Out-String | Write-Error
-          }
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
           $source = Get-Content -LiteralPath $path -Raw
-          $forbidden = @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all')
-          foreach ($term in $forbidden) {
+          foreach ($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all')) {
             if ($source -match [regex]::Escape($term)) { throw "Forbidden disk operation found: $term" }
           }
           foreach ($required in @(
             '000000123ADC',
             'LITEON I T LCS-128L9S',
-            '27611d55fde098f6ff5ece81b53620e64baca390e70ad1b3022c3b2b643831e0',
-            'DEPLOY IGPU DIAGNOSTIC EFI',
-            'EFI_PRE_IGPU_ISOLATION_BACKUP',
-            'com.apple.recovery.boot',
-            'INTERNAL_DISKS=NOT_TOUCHED'
+            'DOWNLOADING_EFI',
+            'ARTIFACT_DOWNLOAD_AND_SHA256=PASS',
+            '7d37511a7926ea91958a2c37889053f93dd5e4301afa2d3d498bf69dd8ff19db',
+            'Get-Partition -DriveLetter F',
+            'APPLE_CHUNKLIST_VERIFICATION=PASS'
           )) {
-            if ($source -notmatch [regex]::Escape($required)) { throw "Required safety assertion missing: $required" }
+            if ($source -notmatch [regex]::Escape($required)) { throw "Required assertion missing: $required" }
           }
-          'POWERSHELL_PARSE=PASS'
+          'POWERSHELL_51_PARSE=PASS'
           'DISK_SAFETY_STATIC_AUDIT=PASS'
+
+      - name: Download, hash-check, and extract the exact published EFI package
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-no-igpu-diagnostic-latest/B460M-iGPU-Isolation-Diagnostic-EFI.zip'
+          $expected = '7d37511a7926ea91958a2c37889053f93dd5e4301afa2d3d498bf69dd8ff19db'
+          $zip = Join-Path $env:RUNNER_TEMP 'B460M-iGPU-Isolation-Diagnostic-EFI.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "SHA256 mismatch. Expected $expected; got $actual" }
+          $out = Join-Path $env:RUNNER_TEMP 'efi-extracted'
+          Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
+          $efi = Join-Path $out 'EFI'
+          foreach ($rel in @(
+            'BOOT\BOOTx64.efi',
+            'OC\OpenCore.efi',
+            'OC\config.plist',
+            'OC\Drivers\OpenRuntime.efi',
+            'OC\Drivers\HfsPlus.efi',
+            'OC\Kexts\UTBMap.kext\Contents\Info.plist'
+          )) {
+            if (!(Test-Path -LiteralPath (Join-Path $efi $rel) -PathType Leaf)) { throw "Missing EFI file: $rel" }
+          }
+          $config = Get-Content -LiteralPath (Join-Path $efi 'OC\config.plist') -Raw
+          if ($config -notmatch '-wegnoigpu' -or $config -match '-wegnoegpu' -or $config -notmatch 'iMac20,1') { throw 'EFI config assertions failed' }
+          $utb = Get-Content -LiteralPath (Join-Path $efi 'OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
+          if ($utb -match 'HS04|SS04') { throw 'HS04/SS04 unexpectedly present in UTBMap' }
+          $count = @(Get-ChildItem -LiteralPath $efi -File -Recurse).Count
+          if ($count -lt 20) { throw "EFI file count suspicious: $count" }
+          "ARTIFACT_DOWNLOAD=PASS"
+          "ARTIFACT_SHA256=$actual"
+          "WINDOWS_EXPAND_ARCHIVE=PASS"
+          "EFI_STRUCTURE_AND_CONFIG=PASS"
+          "EFI_FILE_COUNT=$count"
