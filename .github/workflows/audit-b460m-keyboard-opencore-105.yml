@@ -1,0 +1,196 @@
+name: B460M OpenCore 1.0.5 official keyboard-path audit and diagnostic build
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/audit-b460m-keyboard-opencore-105.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  audit-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download exact currently deployed EFI artifact from run 45703756278
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15063694125/zip \
+            -o deployed-efi-artifact.zip
+          echo "f799c3b0be0a619230e1301f657f553e9f5db7edd7bd91ac9a4820c47442c38f  deployed-efi-artifact.zip" | sha256sum --check
+          mkdir deployed
+          unzip -q deployed-efi-artifact.zip -d deployed
+          test -s deployed/EFI/OC/config.plist
+          test -s deployed/EFI/OC/OpenCore.efi
+          test -s deployed/BOOT/BOOTx64.efi || test -s deployed/EFI/BOOT/BOOTx64.efi
+          echo "EXACT_DEPLOYED_ARTIFACT=PASS"
+
+      - name: Download official OpenCore 1.0.5 DEBUG package and verify pinned SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip \
+            -o OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
+          mkdir official-oc105
+          unzip -q OpenCore-1.0.5-DEBUG.zip -d official-oc105
+          validator="$(find official-oc105 -type f -name ocvalidate.linux -print -quit)"
+          driver="$(find official-oc105 -type f -name OpenUsbKbDxe.efi -print -quit)"
+          test -n "$validator"
+          test -n "$driver"
+          chmod +x "$validator"
+          echo "OFFICIAL_OC_VERSION=1.0.5"
+          echo "MATCHING_OCVALIDATE=$validator"
+          echo "MATCHING_OPENUSBKBD_DRIVER=$driver"
+          sha256sum "$driver" | tee OpenUsbKbDxe-1.0.5.sha256
+
+      - name: Audit deployed EFI structure, versions, USB map, and input settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, hashlib
+          from pathlib import Path
+          root=Path("deployed/EFI")
+          if not (root/"OC/config.plist").is_file() and (Path("deployed/config.plist").is_file()):
+              raise SystemExit("Artifact layout unexpected; refusing to guess EFI root")
+          if not (root/"OC/config.plist").is_file():
+              # upload-artifact may preserve the selected directory root as EFI/OC.
+              candidates=list(Path("deployed").glob("**/OC/config.plist"))
+              if len(candidates)!=1: raise SystemExit(f"Cannot uniquely identify config.plist: {candidates}")
+              root=candidates[0].parents[1]
+          oc=root/"OC"
+          cfg=plistlib.loads((oc/"config.plist").read_bytes())
+          print("EFI_ROOT=",root)
+          for key in ("KeySupport","KeySupportMode"):
+              print("UEFI.Input."+key+"=",cfg["UEFI"]["Input"].get(key))
+          print("UEFI.ConnectDrivers=",cfg["UEFI"].get("ConnectDrivers"))
+          print("UEFI.Drivers=",[(x.get("Path"),x.get("Enabled"),x.get("LoadEarly")) for x in cfg["UEFI"]["Drivers"]])
+          print("Misc.Boot.PollAppleHotKeys=",cfg["Misc"]["Boot"].get("PollAppleHotKeys"))
+          print("USBToolBox entries=",[(x.get("BundlePath"),x.get("Enabled")) for x in cfg["Kernel"]["Add"] if "USB" in x.get("BundlePath","").upper() or "UTB" in x.get("BundlePath","").upper()])
+          map_path=oc/"Kexts/UTBMap.kext/Contents/Info.plist"
+          if map_path.exists():
+              m=plistlib.loads(map_path.read_bytes())
+              ports=m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+              print("UTBMAP_PORT_COUNT=",len(ports))
+              for name,p in sorted(ports.items()):
+                  print("UTBMAP_PORT",name,"type=",p.get("UsbConnector"),"comment=",p.get("Comment",""))
+          else: print("UTBMAP=NOT_FOUND")
+          for rel in ("BOOT/BOOTx64.efi","OC/OpenCore.efi","OC/Drivers/OpenRuntime.efi","OC/Drivers/HfsPlus.efi"):
+              p=root/rel
+              print("FILE",rel,"exists=",p.is_file(),"size=",p.stat().st_size if p.exists() else 0)
+          PY
+
+      - name: Apply single-variable official OpenUsbKbDxe test configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, shutil
+          from pathlib import Path
+          root=Path("deployed/EFI")
+          if not (root/"OC/config.plist").is_file():
+              candidates=list(Path("deployed").glob("**/OC/config.plist"))
+              if len(candidates)!=1: raise SystemExit(f"Cannot uniquely identify config.plist: {candidates}")
+              root=candidates[0].parents[1]
+          oc=root/"OC"
+          cfg=plistlib.loads((oc/"config.plist").read_bytes())
+          # Per OpenCore 1.0.5 Configuration.pdf: OpenUsbKbDxe is an alternative
+          # to AppleGenericInput; KeySupport must NOT be enabled with it.
+          cfg["UEFI"]["Input"]["KeySupport"]=False
+          drivers=cfg["UEFI"]["Drivers"]
+          drivers=[d for d in drivers if d.get("Path")!="OpenUsbKbDxe.efi"]
+          drivers.append({
+            "Arguments":"",
+            "Comment":"OpenCore 1.0.5 official USB HID keyboard driver diagnostic",
+            "Enabled":True,
+            "LoadEarly":False,
+            "Path":"OpenUsbKbDxe.efi"
+          })
+          cfg["UEFI"]["Drivers"]=drivers
+          shutil.copy2("official-oc105/X64/EFI/OC/Drivers/OpenUsbKbDxe.efi",oc/"Drivers/OpenUsbKbDxe.efi")
+          (oc/"config.plist").write_bytes(plistlib.dumps(cfg,fmt=plistlib.FMT_XML,sort_keys=False))
+          print("DIAGNOSTIC_DELTA=UEFI.Input.KeySupport:false + matching OpenUsbKbDxe.efi enabled")
+          print("NO_USB_MAP_OR_ACPI_OR_KEXT_OR_SMBIOS_OR_BOOT_ARGS_CHANGES")
+          PY
+
+      - name: Validate with matching official OpenCore 1.0.5 ocvalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          validator="$(find official-oc105 -type f -name ocvalidate.linux -print -quit)"
+          chmod +x "$validator"
+          config="$(find deployed -type f -path '*/OC/config.plist' -print -quit)"
+          "$validator" "$config"
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          configs=list(Path("deployed").glob("**/OC/config.plist"))
+          assert len(configs)==1,configs
+          oc=configs[0].parent
+          c=plistlib.loads(configs[0].read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is False
+          ds=[x for x in c["UEFI"]["Drivers"] if x.get("Path")=="OpenUsbKbDxe.efi" and x.get("Enabled") is True]
+          assert len(ds)==1 and (oc/"Drivers/OpenUsbKbDxe.efi").is_file()
+          assert c["UEFI"].get("ConnectDrivers") is True
+          assert not any(x.get("Path")=="Ps2KeyboardDxe.efi" and x.get("Enabled") for x in c["UEFI"]["Drivers"])
+          for x in c["UEFI"]["Drivers"]:
+              if x.get("Enabled"): assert (oc/"Drivers"/x["Path"]).is_file(),x["Path"]
+          for x in c["ACPI"]["Add"]:
+              if x.get("Enabled"): assert (oc/"ACPI"/x["Path"]).is_file(),x["Path"]
+          for x in c["Kernel"]["Add"]:
+              if x.get("Enabled"): assert (oc/"Kexts"/x["BundlePath"]).exists(),x["BundlePath"]
+          print("OPENCORE_1.0.5_OCVALIDATE=PASS")
+          print("OPENUSBKBD_DRIVER_MATCH=PASS")
+          print("OFFICIAL_DRIVER_CONFLICT_RULES=PASS")
+          PY
+
+      - name: Package diagnostic EFI and report hardware limitation
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$(dirname "$(find deployed -type f -path '*/OC/config.plist' -print -quit)")"
+          # root is OC; package the EFI parent directory.
+          efi_root="$(dirname "$root")"
+          mkdir -p output
+          cp -a "$efi_root" output/EFI
+          cat > output/DIAGNOSTIC-REPORT.txt <<'EOF'
+          B460M OpenCore 1.0.5 keyboard diagnostic
+          Base: exact SHA256-pinned currently deployed artifact from workflow run 45703756278.
+          Official source: Acidanthera OpenCorePkg tag 1.0.5, matching OpenUsbKbDxe.efi and ocvalidate.
+          Single input-path delta:
+            UEFI -> Input -> KeySupport = false
+            UEFI -> Drivers -> OpenUsbKbDxe.efi = enabled
+          Official rule: OpenUsbKbDxe must not be combined with KeySupport.
+          No USB map, ACPI, kext, SMBIOS, boot-args, Recovery, partition, or internal-disk changes.
+          CI validates package structure and configuration only. Actual USB keyboard enumeration
+          and Recovery keyboard operation require a physical boot test on the target motherboard.
+          EOF
+          cd output
+          zip -qr ../B460M-OpenCore-1.0.5-OpenUsbKbDxe-Keyboard-Diagnostic.zip EFI DIAGNOSTIC-REPORT.txt
+          unzip -t ../B460M-OpenCore-1.0.5-OpenUsbKbDxe-Keyboard-Diagnostic.zip
+          sha256sum ../B460M-OpenCore-1.0.5-OpenUsbKbDxe-Keyboard-Diagnostic.zip
+
+      - name: Upload version-matched diagnostic EFI
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.5-OpenUsbKbDxe-Keyboard-Diagnostic
+          path: |
+            output/EFI/
+            output/DIAGNOSTIC-REPORT.txt
+          if-no-files-found: error
