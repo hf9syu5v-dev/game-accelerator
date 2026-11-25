@@ -148,7 +148,13 @@ jobs:
           with p.open("rb") as f:
               c = plistlib.load(f)
           assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
-          assert c["PlatformInfo"]["Generic"]["SystemSerialNumber"] == "C02J5NYBPN5T"
+          assert c["PlatformInfo"]["Generic"]["SystemSerialNumber"] == ""
+assert c["PlatformInfo"]["Generic"]["MLB"] == ""
+assert c["PlatformInfo"]["Generic"]["SystemUUID"] == ""
+assert c["PlatformInfo"]["Generic"]["ROM"] == b""
+assert c["Booter"]["Quirks"]["DevirtualiseMmio"] is True
+assert c["Booter"]["Quirks"]["SetupVirtualMap"] is False
+assert c["Booter"]["Quirks"]["ProtectUefiServices"] is True
           assert len(c["Kernel"]["Add"]) == 6
           assert len(c["ACPI"]["Add"]) == 4
           print(f"config.plist parsed: {p.stat().st_size} bytes")
@@ -168,7 +174,7 @@ jobs:
             echo "- Config: hardware-specific config.plist candidate generated and checked with matching ocvalidate"
             echo "- Status: STAGING ONLY; NOT BOOTABLE"
             echo
-            echo "The config.plist is a DEBUG candidate. It contains the user-approved SMBIOS identifiers."
+            echo "The config.plist is a DEBUG staging candidate. SMBIOS model iMac20,1 is selected, but serial, MLB, ROM and UUID are intentionally blank; generate fresh values locally on the target PC and apply them privately."
             echo "USB port mapping and real-hardware testing are not complete. No installer, disk image, or physical EFI write is included."
             echo
             echo "## SHA-256"
