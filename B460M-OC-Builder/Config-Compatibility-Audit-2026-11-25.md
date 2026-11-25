@@ -96,3 +96,14 @@ The latest staging workflow is Run 45585718839, built from commit `2441e21d74609
 In addition to the Run #28 config and cross-file assertions, Run #31 verifies the exact Bundle ID and CFBundleVersion of all seven binary kexts and checks each executable contains x86_64 using macOS `lipo`. It separately verifies UTBMap's codeless bundle and USBToolBox dependency metadata. All checks passed. The first test attempt (Run #30) exposed an incorrect `lipo` argument order in the new test; the workflow command was corrected and Run #31 passed.
 
 See [Artifact-Audit-Run-45585718839.md](Artifact-Audit-Run-45585718839.md) for the full record. This remains a CI-validated staging candidate, **not a bootable or hardware-tested EFI**.
+
+
+## 11. Latest full validation — Run #35
+
+Run 45586016881 completed successfully from commit `6967993d4ff3ac9d9d44abeedbbe45fcc65a96c7`. Artifact ID `15007769687`, SHA-256 `0f1dd243fbbc75fcb47a26073dc457a15c455e56726cc8dc5d9bdce342d30d7e`.
+
+Run #35 adds ACPICA disassembly of all three enabled AML tables in an isolated temporary directory. Each AML successfully parsed and produced a non-empty ASL DefinitionBlock. The kext version/Bundle ID/x86_64 checks, UTBMap structure/dependency checks, config cross-file assertions, and matching OpenCore 1.0.8 `ocvalidate` all passed.
+
+The ACPICA check's first attempts exposed only a script output-path assumption; the script now copies AML inputs into the temporary workspace before disassembly. Run #35 is the first successful artifact containing this additional validation. Full details: [Artifact-Audit-Run-45586016881.md](Artifact-Audit-Run-45586016881.md).
+
+The result is still **STAGING ONLY — NOT BOOTABLE** pending physical USB validation and target-machine hardware tests.
