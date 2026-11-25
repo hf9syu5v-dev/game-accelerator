@@ -291,9 +291,34 @@ jobs:
           No EFI partition or user disk was accessed.
           EOF
 
-      - name: Upload configured EFI stage
+      - name: Create and verify final EFI package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd staging
+          zip -qr B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip EFI Generate-B460M-SMBIOS-Values.ps1 Apply-B460M-Local-SMBIOS.ps1 LOCAL-SMBIOS-README.txt BUILD-STATUS.txt
+          unzip -t B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          p=Path("B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip")
+          with zipfile.ZipFile(p) as z:
+              names=z.namelist()
+              assert "EFI/BOOT/BOOTx64.efi" in names
+              assert "EFI/OC/OpenCore.efi" in names
+              assert "EFI/OC/config.plist" in names
+              assert "EFI/OC/Drivers/HfsPlus.efi" in names
+              assert "EFI/OC/Drivers/OpenRuntime.efi" in names
+              for k in ["Lilu","VirtualSMC","WhateverGreen","AppleALC","IntelMausi","NVMeFix","USBToolBox","UTBMap"]:
+                  assert any(n.startswith(f"EFI/OC/Kexts/{k}.kext/Contents/Info.plist") for n in names), k
+              for forbidden in [b"C02J5NYBPN5T",b"C02231609GUPHC1JC",b"78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"]:
+                  assert all(forbidden not in z.read(n) for n in names if not n.endswith((".efi",".aml")))
+          print("Final EFI package integrity and SMBIOS privacy assertions passed.")
+          PY
+
+      - name: Upload final EFI package
         uses: actions/upload-artifact@v4
         with:
-          name: OpenCore-1.0.5-Sequoia-CONFIGURED-EFI-STAGE-LOCAL-SMBIOS-REQUIRED
-          path: staging/
+          name: B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-LOCAL-SMBIOS-REQUIRED
+          path: staging/B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip
           if-no-files-found: error
