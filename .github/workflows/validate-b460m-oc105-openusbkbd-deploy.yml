@@ -96,8 +96,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 \\
-            https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip \\
+          curl --fail --location --retry 3 \
+            https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip \
             -o OpenCore-1.0.5-DEBUG.zip
           echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
           mkdir official-oc105
