@@ -1,0 +1,46 @@
+name: Test B460M clean USB rebuild script
+on:
+  push:
+    paths:
+      - "B460M-OC-Builder/Rebuild-B460M-Sequoia-NO-SS04-USB.ps1"
+      - ".github/workflows/test-b460m-clean-rebuild-script.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  powershell-51-audit:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'B460M-OC-Builder/Rebuild-B460M-Sequoia-NO-SS04-USB.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Host; throw 'PowerShell parse failed.' }
+          Write-Host 'POWERSHELL_51_PARSE=PASS'
+      - name: Audit destructive scope and rebuild steps
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Get-Content 'B460M-OC-Builder/Rebuild-B460M-Sequoia-NO-SS04-USB.ps1' -Raw
+          $checks = [ordered]@{
+            'Exact USB model' = $p.Contains("LITEON I T LCS-128L9S")
+            'Exact USB serial' = $p.Contains("000000123ADC")
+            'USB bus guard' = $p.Contains("$_.BusType -eq 'USB'")
+            'Boot/system guard' = $p.Contains('$d.IsBoot -or $d.IsSystem')
+            'Explicit destructive confirmation' = $p.Contains('REFORMAT LITEON 000000123ADC')
+            'DiskPart clean and GPT' = ($p.Contains("'clean'") -and $p.Contains("'convert gpt'"))
+            'EFI partition' = $p.Contains('create partition efi size=16000')
+            'FAT32 format' = $p.Contains('format fs=fat32 quick label=OC-SEQUOIA')
+            'Apple recovery download' = $p.Contains('macrecovery.py')
+            'EFI HS04 SS04 exclusion' = ($p.Contains('HS04') -and $p.Contains('SS04'))
+            'SHA256 copy verification' = $p.Contains('Get-FileHash')
+            'No Storage API mount calls' = (-not $p.Contains('Add-PartitionAccessPath'))
+          }
+          $checks.GetEnumerator() | ForEach-Object { Write-Host ("{0}={1}" -f $_.Key, $(if($_.Value){'PASS'}else{'FAIL'})) }
+          if ($checks.Values -contains $false) { throw 'Static safety audit failed.' }
+          Write-Host 'STATIC_REBUILD_AUDIT=PASS'
