@@ -68,6 +68,12 @@ try {
     $env:https_proxy = $env:HTTPS_PROXY
     $env:NO_PROXY = ''; $env:no_proxy = ''
     Write-Host 'APPLE_RECOVERY_PROXY=http://192.168.123.186:1080' -ForegroundColor Green
+    # Apply a finite socket timeout to urllib calls made by official macrecovery.py.
+    $pythonSite = Join-Path $Work 'python-site'
+    New-Item -ItemType Directory -Path $pythonSite -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $pythonSite 'sitecustomize.py') -Value 'import socket; socket.setdefaulttimeout(45)' -Encoding ASCII
+    if ($env:PYTHONPATH) { $env:PYTHONPATH = "$pythonSite;$env:PYTHONPATH" } else { $env:PYTHONPATH = $pythonSite }
+    Write-Host 'PYTHON_SOCKET_TIMEOUT=45_SECONDS' -ForegroundColor Green
     Write-Host 'Requesting Sequoia Recovery from Apple through the verified proxy. Transient failures retry up to 5 times ...' -ForegroundColor Yellow
     $argsList = @($macRecovery, '-b', $BoardId, '-m', $Mlb, '-o', $downloadDir, 'download')
     $downloadExit = 1
