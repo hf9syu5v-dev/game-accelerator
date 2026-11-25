@@ -1,5 +1,5 @@
 # B460M-PLUS OpenCore DEBUG bootstrap
-# Revision: 2026-11-25-r1
+# Revision: 2026-11-25-r2
 # Windows PowerShell 5.1; project workspace only; never writes to a physical EFI partition.
 
 $ErrorActionPreference = "Stop"
@@ -35,10 +35,17 @@ if (Test-Path -LiteralPath $ExtractRoot) {
 New-Item -ItemType Directory -Path $ExtractRoot -Force | Out-Null
 Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractRoot -Force
 
+# OpenCore release archives contain both IA32 and X64 trees.
+# This build targets x86_64 UEFI, so only search inside X64.
+$X64Root = Join-Path $ExtractRoot "X64"
+if (-not (Test-Path -LiteralPath $X64Root -PathType Container)) {
+    throw ("Expected X64 directory in OpenCore package: " + $X64Root)
+}
+
 function Find-OneFile([string]$Base, [string]$Name) {
     $Matches = @(Get-ChildItem -LiteralPath $Base -File -Recurse | Where-Object { $_.Name -eq $Name })
     if ($Matches.Count -ne 1) {
-        throw ("Expected exactly one " + $Name + " in OpenCore package; found " + $Matches.Count)
+        throw ("Expected exactly one " + $Name + " under X64; found " + $Matches.Count)
     }
     return $Matches[0].FullName
 }
@@ -56,10 +63,10 @@ function Copy-CheckedPe([string]$Source, [string]$Destination) {
     Write-Host ("OK: " + (Split-Path $Destination -Leaf) + " SHA256=" + $Hash) -ForegroundColor Green
 }
 
-$OpenCoreSource = Find-OneFile $ExtractRoot "OpenCore.efi"
-$BootSource = Find-OneFile $ExtractRoot "BOOTx64.efi"
-$RuntimeSource = Find-OneFile $ExtractRoot "OpenRuntime.efi"
-$ShellSource = Find-OneFile $ExtractRoot "OpenShell.efi"
+$OpenCoreSource = Find-OneFile $X64Root "OpenCore.efi"
+$BootSource = Find-OneFile $X64Root "BOOTx64.efi"
+$RuntimeSource = Find-OneFile $X64Root "OpenRuntime.efi"
+$ShellSource = Find-OneFile $X64Root "OpenShell.efi"
 
 Copy-CheckedPe $OpenCoreSource (Join-Path $OcRoot "OpenCore.efi")
 Copy-CheckedPe $BootSource (Join-Path $EfiRoot "BOOT\BOOTx64.efi")
