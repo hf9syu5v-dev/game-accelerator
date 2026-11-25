@@ -45,3 +45,22 @@ jobs:
           'PYTHON_SYNTAX=PASS'
           'USB_IDENTITY_AND_RECOVERY_GUARDS=PASS'
           'NO_PARTITION_OR_FORMAT_OPERATIONS=PASS'
+      - name: Exercise ZIP extraction and EFI root detection with fixture
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python - <<'PY'
+          import importlib.util, tempfile, zipfile
+          from pathlib import Path
+          p=Path('B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.py')
+          spec=importlib.util.spec_from_file_location('deployer',p)
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          with tempfile.TemporaryDirectory() as td:
+              z=Path(td)/'fixture.zip'
+              with zipfile.ZipFile(z,'w') as a:
+                  a.writestr('EFI/OC/config.plist',b'fixture')
+              root=m.safe_extract(z,Path(td)/'out')
+              assert root.name=='EFI',root
+              assert (root/'OC/config.plist').is_file()
+          print('ZIP_EXTRACTION_AND_EFI_ROOT=PASS')
+          PY
