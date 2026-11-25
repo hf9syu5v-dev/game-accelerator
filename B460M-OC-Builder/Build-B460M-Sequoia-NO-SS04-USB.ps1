@@ -95,7 +95,7 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
   Start-Sleep -Seconds 3
   $newParts=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
   $dataParts=@($newParts|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB -and [string]$_.DriveLetter -eq $chosenLetter})
-  if($dataParts.Count -ne 1){Fail "Expected one 16GB Basic-Data partition with drive "+$chosenLetter+"; found "+$dataParts.Count+"."}
+  if($dataParts.Count -ne 1){Fail ("Expected one 16GB Basic-Data partition with drive "+$chosenLetter+"; found "+$dataParts.Count+".")}
   $part=$dataParts[0]
  }
  if($part.Size -lt 15GB -or $part.Size -gt 17GB -or [string]$part.DriveLetter -ne $chosenLetter){Fail "USB partition identity/size/drive-letter verification failed."}
