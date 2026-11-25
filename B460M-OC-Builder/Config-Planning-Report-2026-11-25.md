@@ -98,7 +98,11 @@ These are a platform baseline; DEBUG boot logs and firmware behavior still need 
 Do not inject I225-V properties: the board has Intel I219-V.
 Do not use agdpmod=pikera (RX 570 is Polaris, not Navi).
 Do not use -wegnoegpu.
-No iGPU framebuffer properties are approved yet. The display is connected to RX 570; the BIOS iGPU is enabled and DVMT is 512 MB. Decide whether the UHD iGPU is to be used headless for Quick Sync before adding any iGPU device properties. Do not copy generic desktop framebuffer values without confirming the device path and intended role.
+User selected the headless Quick Sync design: RX 570 remains the display/output GPU; Intel UHD 630 is intended only for compute/video acceleration. The BIOS iGPU remains enabled, iGPU Multi-Monitor is enabled, and DVMT pre-allocation is 512 MB.
+
+For Comet Lake-S desktop UHD 630, the Dortania Comet Lake guide identifies the headless platform-id as Data `0300C89B` (framebuffer `0x9BC80003`); the official WhateverGreen framebuffer table lists `0x9BC80003` as a desktop framebuffer with zero connectors and 1 MB stolen memory. Candidate DeviceProperties path is `PciRoot(0x0)/Pci(0x2,0x0)`, subject to confirming the actual IGPU PCI device in this machine.
+
+Initial candidate: inject only `AAPL,ig-platform-id` = Data `0300C89B`. Do not add connector patches, `framebuffer-patch-enable`, `framebuffer-stolenmem`, or a fake `device-id` for a headless framebuffer. Before finalizing, read the actual iGPU Hardware Ids in Windows Device Manager (Properties -> Details -> Hardware Ids) because this is an ES CPU and its reported PCI device ID must be confirmed rather than assumed. If the hardware ID is already a supported Comet Lake UHD 630 ID (for example 9BC8/9BC5/9BC4), do not spoof it.
 
 ### Audio
 ALC S1200A is the identified codec. Use alcid=3 as the first test candidate because a community EFI for the closely matching ASUS TUF B460M-PLUS Wi-Fi / i5-10400 platform reports layout-id 3. This is evidence for a test, not proof that every board revision and jack configuration behaves identically. Confirm speaker output, microphone input, front-panel detection and sleep/wake audio before treating audio as complete. Do not keep the Sample.plist's unrelated layout-id by accident.
@@ -107,7 +111,7 @@ ALC S1200A is the identified codec. Use alcid=3 as the first test candidate beca
 
 1. Direct CFG Lock state is still desirable but is no longer a blocker: use the provisional AppleXcpmCfgLock workaround for a first-boot candidate, then verify from DEBUG log.
 2. Direct CPUID read is still desirable as a final confirmation, but Intel's datasheet already maps the reported Comet Lake-S G0 stepping to 0x000A0650; do not spoof this value by default.
-3. Whether Intel UHD iGPU should provide Quick Sync/headless compute, or remain unused while RX 570 drives the display.
+3. Confirm the ES CPU's actual UHD iGPU PCI Hardware Id in Windows Device Manager before finalizing the headless DeviceProperties entry.
 4. Whether user is willing to generate a unique iMac20,1 SMBIOS using GenSMBIOS; serial, MLB, ROM and UUID will not be invented by this project.
 
 ## 5. Safety gates before any boot attempt
@@ -122,5 +126,6 @@ ALC S1200A is the identified codec. Use alcid=3 as the first test candidate beca
 ## References
 
 - Intel 10th Gen Core processor datasheet, CPUID table (Comet Lake-S S6/S4/S2 G0 = A0650): https://cdrdv2-public.intel.com/615211/615211-008.pdf
-- Dortania Desktop Comet Lake configuration guide: https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html
+- Dortania Desktop Comet Lake configuration guide (headless iGPU platform-id `0300C89B`): https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html
+- WhateverGreen official Intel framebuffer FAQ (Comet Lake `0x9BC80003` desktop, zero connectors): https://github.com/acidanthera/WhateverGreen/blob/master/Manual/FAQ.IntelHD.en.md
 - Dortania config.plist setup and file consistency guidance: https://dortania.github.io/OpenCore-Install-Guide/config.plist/
