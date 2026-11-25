@@ -46,8 +46,8 @@ def validate_efi(efi: Path) -> list[Path]:
     boot=c.get("Misc",{}).get("Boot",{})
     drivers=c.get("UEFI",{}).get("Drivers",[])
     args=c.get("NVRAM",{}).get("Add",{}).get("7C436110-AB2A-4BBB-A880-FE41995C9F82",{}).get("boot-args","").split()
-    if inp.get("KeySupport") is not True or inp.get("KeySupportMode")!="V1":
-        raise RuntimeError("Expected KeySupport=true and KeySupportMode=V1")
+    if inp.get("KeySupport") is not False:
+        raise RuntimeError("Expected KeySupport=false to bypass AppleGenericInput")
     if boot.get("PollAppleHotKeys") is not False: raise RuntimeError("PollAppleHotKeys must remain false")
     if any(d.get("Path")=="OpenUsbKbDxe.efi" for d in drivers): raise RuntimeError("OpenUsbKbDxe must not be configured")
     if (efi/"OC/Drivers/OpenUsbKbDxe.efi").exists(): raise RuntimeError("OpenUsbKbDxe binary must be absent")
@@ -126,14 +126,14 @@ def deploy():
             if backup.exists() and not current.exists(): backup.rename(current)
             raise
     print("NATIVE_FIRMWARE_KEYBOARD_DIAGNOSTIC_DEPLOYMENT_SUCCESS")
-    print("ACTIVE_EFI=F:\\EFI (KeySupport=true; KeySupportMode=V1; OpenUsbKbDxe absent)")
-    print("PREVIOUS_OPENUSBKBD_EFI_PRESERVED=F:\\"+BACKUP)
+    print("ACTIVE_EFI=F:\\EFI (KeySupport=false; OpenUsbKbDxe absent)")
+    print("PREVIOUS_ACTIVE_EFI_PRESERVED=F:\\"+BACKUP)
     print("KNOWN_GOOD_VESA_EFI_PRESERVED=F:\\"+KNOWN_GOOD_VESA)
     print("RECOVERY_AND_ALL_DISK_PARTITIONS=UNCHANGED; INTERNAL_DISKS=NOT_MODIFIED")
 
 def self_test():
     import plistlib
-    with tempfile.TemporaryDirectory(prefix="B460M-V1-Test-") as td:
+    with tempfile.TemporaryDirectory(prefix="B460M-Native-Input-Test-") as td:
         b=Path(td); src=b/"src"/"EFI"; (src/"BOOT").mkdir(parents=True); (src/"OC").mkdir()
         for i in range(24): (src/"OC"/("x%d"%i)).write_bytes(("v%d"%i).encode())
         (src/"BOOT/BOOTx64.efi").write_bytes(b"boot")
