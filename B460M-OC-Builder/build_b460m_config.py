@@ -69,7 +69,7 @@ kexts = [
     ("WhateverGreen.kext", "as.vit9696.WhateverGreen", "Contents/MacOS/WhateverGreen"),
     ("AppleALC.kext", "as.vit9696.AppleALC", "Contents/MacOS/AppleALC"),
     ("IntelMausi.kext", "as.acidanthera.mieze.IntelMausi", "Contents/MacOS/IntelMausi"),
-    ("NVMeFix.kext", "as.vit9696.NVMeFix", "Contents/MacOS/NVMeFix"),
+    ("NVMeFix.kext", "org.acidanthera.NVMeFix", "Contents/MacOS/NVMeFix"),
 ]
 kernel = need(cfg, "Kernel")
 kernel["Add"] = []
