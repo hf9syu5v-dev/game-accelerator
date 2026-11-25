@@ -29,6 +29,12 @@ jobs:
           $remove = Get-Command Remove-PartitionAccessPath
           if (-not $add.Parameters.ContainsKey('AccessPath')) { throw 'Add-PartitionAccessPath lacks AccessPath' }
           if (-not $remove.Parameters.ContainsKey('AccessPath')) { throw 'Remove-PartitionAccessPath lacks AccessPath' }
+          $addSets = @($add.ParameterSets | Where-Object { $_.Parameters.Name -contains 'DiskNumber' -and $_.Parameters.Name -contains 'PartitionNumber' -and $_.Parameters.Name -contains 'AccessPath' })
+          $removeSets = @($remove.ParameterSets | Where-Object { $_.Parameters.Name -contains 'DiskNumber' -and $_.Parameters.Name -contains 'PartitionNumber' -and $_.Parameters.Name -contains 'AccessPath' })
+          if (-not $addSets.Count -or -not $removeSets.Count) { throw 'No compatible DiskNumber + PartitionNumber + AccessPath parameter set' }
+          $scriptText = Get-Content 'B460M-OC-Builder/Deploy-B460M-NO-SS04-EFI-To-USB.ps1' -Raw
+          if ($scriptText -notmatch '-Add-PartitionAccessPath.*-AccessPath' -or $scriptText -match '-Add-PartitionAccessPath.*-DriveLetter') { throw 'Deployment script does not use AccessPath for ESP mounting' }
+          if ($scriptText -notmatch '-Remove-PartitionAccessPath.*-AccessPath') { throw 'Deployment script does not use AccessPath for ESP unmounting' }
           if ($add.Parameters.ContainsKey('DriveLetter')) { Write-Host 'Add cmdlet also exposes DriveLetter' }
           Write-Host ('ADD_PARTITION_ACCESS_PATH_PARAMETERS=' + (($add.Parameters.Keys | Sort-Object) -join ','))
           Write-Host ('REMOVE_PARTITION_ACCESS_PATH_PARAMETERS=' + (($remove.Parameters.Keys | Sort-Object) -join ','))
@@ -51,3 +57,54 @@ jobs:
             if ((Get-Content (Join-Path $dst 'probe.txt') -Raw).Trim() -ne 'ok') { throw 'ZIP extraction content mismatch' }
             Write-Host 'ZIP_EXTRACTION=PASS'
           } finally { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
+
+      - name: Run full deployment simulation against a synthetic USB
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:TEMP ('NO-SS04-INTEGRATION-' + [guid]::NewGuid().ToString('N'))
+          $env:USERPROFILE = Join-Path $root 'profile'
+          $downloads = Join-Path $env:USERPROFILE 'Downloads'
+          $usb = Join-Path $root 'usb'
+          $artifact = Join-Path $downloads 'B460M-NO-SS04-DIAGNOSTIC-ARTIFACT.zip'
+          New-Item -ItemType Directory -Path $downloads,$usb | Out-Null
+          try {
+            Set-Content (Join-Path $usb 'BaseSystem.dmg') 'recovery-dmg'
+            Set-Content (Join-Path $usb 'BaseSystem.chunklist') 'recovery-chunklist'
+            New-Item -ItemType Directory (Join-Path $usb 'EFI\OLD') -Force | Out-Null
+            Set-Content (Join-Path $usb 'EFI\OLD\old.txt') 'old-efi'
+            $payload = Join-Path $root 'payload'
+            New-Item -ItemType Directory (Join-Path $payload 'EFI\BOOT') -Force | Out-Null
+            New-Item -ItemType Directory (Join-Path $payload 'EFI\OC\Kexts\UTBMap.kext\Contents') -Force | Out-Null
+            Set-Content (Join-Path $payload 'EFI\BOOT\BOOTx64.efi') 'boot'
+            Set-Content (Join-Path $payload 'EFI\OC\OpenCore.efi') 'opencore'
+            Set-Content (Join-Path $payload 'EFI\OC\config.plist') 'config'
+            Set-Content (Join-Path $payload 'EFI\OC\Kexts\UTBMap.kext\Contents\Info.plist') '<plist><dict><key>HS01</key><key>SS01</key></dict></plist>'
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $inner = Join-Path $root 'B460M-no-SS04-Diagnostic-EFI.zip'
+            Compress-Archive -Path (Join-Path $payload '*') -DestinationPath $inner
+            Copy-Item $inner $downloads
+            $outerRoot = Join-Path $root 'outer'
+            New-Item -ItemType Directory $outerRoot | Out-Null
+            Copy-Item $inner $outerRoot
+            Compress-Archive -Path (Join-Path $outerRoot '*') -DestinationPath $artifact
+
+            $script:UsbRoot = $usb
+            function Get-Disk { [pscustomobject]@{ Number=1; SerialNumber='000000123ADC'; FriendlyName='LITEON I T LCS-128L9S'; Size=128035676160L; IsBoot=$false; IsSystem=$false; PartitionStyle='GPT' } }
+            function Get-Partition { [pscustomobject]@{ GptType='{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}'; Size=16777216000L } }
+            function Get-Volume { param($Partition) if ($Partition) { [pscustomobject]@{ FileSystem='FAT32' } } else { @() } }
+            function Add-PartitionAccessPath { param($DiskNumber,$PartitionNumber,$AccessPath) $letter=$AccessPath.Substring(0,1); New-PSDrive -Name $letter -PSProvider FileSystem -Root $script:UsbRoot -Scope Global | Out-Null }
+            function Remove-PartitionAccessPath { param($DiskNumber,$PartitionNumber,$AccessPath,$ErrorAction) $letter=$AccessPath.Substring(0,1); Remove-PSDrive -Name $letter -Force -ErrorAction SilentlyContinue }
+            function Read-Host { param($Prompt) 'DEPLOY NO-SS04 EFI' }
+            & 'B460M-OC-Builder/Deploy-B460M-NO-SS04-EFI-To-USB.ps1'
+            if (-not (Test-Path (Join-Path $usb 'EFI\BOOT\BOOTx64.efi'))) { throw 'Synthetic deployment did not copy BOOTx64.efi' }
+            if (-not (Test-Path (Join-Path $usb 'EFI_PRE_NO_SS04_BACKUP\OLD\old.txt'))) { throw 'Original EFI backup missing' }
+            if ((Get-Content (Join-Path $usb 'BaseSystem.dmg') -Raw).Trim() -ne 'recovery-dmg') { throw 'BaseSystem.dmg changed' }
+            if ((Get-Content (Join-Path $usb 'BaseSystem.chunklist') -Raw).Trim() -ne 'recovery-chunklist') { throw 'BaseSystem.chunklist changed' }
+            $map = Get-Content (Join-Path $usb 'EFI\OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
+            if ($map -match 'HS04|SS04') { throw 'Forbidden port found in deployed UTBMap' }
+            Write-Host 'SYNTHETIC_USB_FULL_DEPLOYMENT=PASS'
+          } finally {
+            if (Get-PSDrive Z -ErrorAction SilentlyContinue) { Remove-PSDrive Z -Force -ErrorAction SilentlyContinue }
+            Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          }
