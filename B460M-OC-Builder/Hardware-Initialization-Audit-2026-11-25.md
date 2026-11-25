@@ -32,7 +32,7 @@ The workflow generates config.plist during CI from the OpenCore 1.0.8 Sample.pli
 
 - The drive is specified as M.2 2280, PCIe Gen3 x4, NVMe (vendor documentation lists NVMe 1.3/1.4 across product documents).
 - NVMeFix is staged at 1.1.3 after Lilu. Its upstream project describes it as a set of patches for Apple's IONVMeFamily driver to improve compatibility with non-Apple NVMe SSDs, including APST/power-state handling and selected timeout workarounds.
-- Public vendor documentation located for EX900 Plus does not establish the exact controller silicon for this particular 256GB unit. Do not assume it is identical to the original EX900 controller based on model-family similarity.
+- HP's official specifications confirm PCIe Gen3 x4 / NVMe 1.4 but do not name the controller. Two independent reviews specifically of the 256GB EX900 Plus report an InnoGrit IG5216 controller (one identifies the marking IG5216BBA). This is useful model/capacity-level evidence, but not a serial-specific identification of the user's physical unit; manufacturing revisions can vary. Do not confuse the older non-Plus EX900's Silicon Motion SM2263XT controller with the EX900 Plus.
 - Decision: retain NVMeFix as a conservative compatibility/power-management component; do not inject guessed SSD PCI properties or force ASPM. Confirm controller identity from read-only Windows hardware information if needed, then validate detection, SMART, sleep/wake and power-state stability after macOS boot.
 - Safety: no NVMe write, format, partition, install or internal EFI operation is authorized or included. HP EX900 Plus remains untouched.
 
@@ -46,7 +46,7 @@ The workflow generates config.plist during CI from the OpenCore 1.0.8 Sample.pli
 
 - Codec ID recorded for the board is 0x0B00 (decimal 2816), identified in AppleALC's codec resources as ALCS1200A.
 - AppleALC 1.9.8 is staged and enabled after Lilu.
-- AppleALC's available layout IDs for this codec include 1, 2, 3, 7, 11, 12, 23, 31, 49, 50, 51, 52 and 69. Some layouts are associated with other manufacturers' B460 boards and cannot be assumed correct for this ASUS board.
+- AppleALC's current supported-codecs table lists ALCS1200A layout IDs 1, 2, 3, 7, 11, 12, 23, 49, 50, 51, 52 and 69. Some layouts are associated with other manufacturers' boards and cannot be assumed correct for this ASUS board.
 - The config generator intentionally does not set `alcid` and does not add an audio layout device property.
 - Decision: preserve this conservative state. After first boot, inspect codec detection and test layouts with a documented jack-by-jack matrix. Do not blindly set layout 1 or copy a Gigabyte/MSI layout.
 
@@ -85,6 +85,8 @@ No config change was made by this audit because the current values are conservat
 - IntelMausi changelog: https://github.com/acidanthera/IntelMausi/blob/master/Changelog.md
 - NVMeFix purpose and configuration: https://github.com/acidanthera/NVMeFix
 - HP EX900 Plus official specifications: https://hp.biwintech.com/u_file/photo/20220728/EX900-Plus-Specifications.pdf
+- 256GB EX900 Plus controller identification (independent review): https://club.dns-shop.ru/review/t-101-ssd-nakopiteli-2-5/115732-obzor-256-gb-ssd-m-2-nakopitelya-hp-ex900-plus/
+- Additional 256GB EX900 Plus review: https://club.dns-shop.ru/review/t-101-ssd-nakopiteli-2-5/84915-obzor-ssd-hp-ex900-plus-256-gb-35m32aa-abb/
 - Dortania Ethernet kext guidance: https://dortania.github.io/OpenCore-Install-Guide/ktext.html
 - AppleALC supported codecs: https://github.com/acidanthera/AppleALC/wiki/Supported-codecs
 
