@@ -2,7 +2,7 @@
 
 This directory is a staging layout, not yet a bootable EFI.
 
-- `ACPI/`: four official Dortania AML candidates, copied byte-for-byte and verified against the upstream files.
+- `ACPI/`: three official Dortania AML files, copied byte-for-byte and verified against upstream, plus one board-specific RHUB DSL source awaiting compilation.
 - `Kexts/`: official release manifest and intended load order; actual bundles still need to be downloaded/extracted.
 - `Drivers/`: required UEFI driver manifest.
 - `config.plist`: not yet generated. Do not boot this staging tree until the complete config has been generated, populated with locally generated SMBIOS values, and passed OpenCore 1.0.8 ocvalidate.
