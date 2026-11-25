@@ -120,8 +120,17 @@ try {
         Copy-Item -LiteralPath $amlPath -Destination $backup
         Write-Host "已备份原 AML：$backup"
     }
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $compilePath -IaslPath $iaslPath
-    if ($LASTEXITCODE -ne 0) { throw "仓库编译脚本失败，退出代码：$LASTEXITCODE" }
+    # Compile in this PowerShell process. The repository child script is retained
+    # as a reference artifact, but is deliberately not invoked. This avoids
+    # Windows PowerShell 5.1 child-script encoding/parser ambiguity.
+    Push-Location $AcpiDir
+    try {
+        & $iaslPath -tc $dslPath
+        if ($LASTEXITCODE -ne 0) { throw "iASL 编译失败，退出代码：$LASTEXITCODE" }
+    }
+    finally {
+        Pop-Location
+    }
 
     Write-Step "[6/6] 独立检查 AML 文件"
     if (-not (Test-Path -LiteralPath $amlPath)) { throw "没有生成预期 AML：$amlPath" }
