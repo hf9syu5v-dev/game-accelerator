@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p staging/EFI/OC/ACPI
+          mkdir -p staging/EFI/BOOT staging/EFI/OC/ACPI
           cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-PLUG-DRTNIA.aml staging/EFI/OC/ACPI/
           cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-EC-USBX-DESKTOP.aml staging/EFI/OC/ACPI/
           cp B460M-OC-Builder/EFI/EFI/OC/ACPI/SSDT-AWAC.aml staging/EFI/OC/ACPI/
@@ -97,7 +97,7 @@ jobs:
           PY
           cp oc105/X64/EFI/OC/OpenCore.efi staging/EFI/OC/
           cp oc105/X64/EFI/OC/OpenRuntime.efi staging/EFI/OC/
-          cp oc105/X64/EFI/BOOT/BOOTx64.efi staging/EFI/BOOTx64.efi
+          cp oc105/X64/EFI/BOOT/BOOTx64.efi staging/EFI/BOOT/
           mkdir -p staging/EFI/OC/Drivers
           cp oc105/X64/EFI/OC/Drivers/OpenRuntime.efi staging/EFI/OC/Drivers/
           cat > staging/BUILD-STATUS.txt <<'EOF'
