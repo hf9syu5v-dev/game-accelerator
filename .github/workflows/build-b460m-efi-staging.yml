@@ -234,7 +234,18 @@ jobs:
           assert [x["Path"] for x in c["UEFI"]["Drivers"]] == expected_drivers
           assert all(x["Enabled"] and (Path("build/EFI/OC/Drivers") / x["Path"]).is_file() for x in c["UEFI"]["Drivers"])
           assert c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"].startswith("-v ")
-          assert c["DeviceProperties"]["Add"]["PciRoot(0x0)/Pci(0x2,0x0)"]["AAPL,ig-platform-id"] == bytes.fromhex("0300C89B")
+          # Graphics/network/storage/audio/CPU initialization guardrails from the hardware audit.
+          assert list(c["DeviceProperties"]["Add"]) == ["PciRoot(0x0)/Pci(0x2,0x0)"]
+          igpu = c["DeviceProperties"]["Add"]["PciRoot(0x0)/Pci(0x2,0x0)"]
+          assert igpu == {"AAPL,ig-platform-id": bytes.fromhex("0300C89B")}
+          assert c["DeviceProperties"]["Delete"] == {}
+          boot_args = c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
+          for forbidden in ("agdpmod=pikera", "-wegnoegpu", "alcid=", "cpus=1", "nvmefaspm"):
+              assert forbidden not in boot_args, f"Unjustified boot argument present: {forbidden}"
+          assert "NVMeFix.kext" in [x["BundlePath"] for x in c["Kernel"]["Add"]]
+          assert c["Kernel"]["Emulate"]["Cpuid1Data"] == bytes(16)
+          assert c["Kernel"]["Emulate"]["Cpuid1Mask"] == bytes(16)
+          print("Hardware guardrails passed: RX 570 remains enabled; UHD 630 headless only; no speculative audio/ASPM/CPU spoof")
           print(f"config.plist parsed and cross-checked against staged files: {p.stat().st_size} bytes")
           PY
 
