@@ -177,8 +177,9 @@ need(misc, "Boot").update({
 })
 need(misc, "Debug").update({
     "AppleDebug": True,
-    "ApplePanic": False,
-    "DisableWatchDog": False,
+    "DisplayLevel": 2147483714,
+    "ApplePanic": True,
+    "DisableWatchDog": True,
     "Target": 67,
 })
 need(misc, "Security").update({
@@ -188,7 +189,8 @@ need(misc, "Security").update({
     "DmgLoading": "Signed",
     "EnablePassword": False,
     "ExposeSensitiveData": 6,
-    "ScanPolicy": 0,
+    # USB-only scan for the first removable-media test; exclude internal SATA/NVMe boot entries.
+    "ScanPolicy": 0x200703,
     "SecureBootModel": "Default",
     "Vault": "Optional",
 })
