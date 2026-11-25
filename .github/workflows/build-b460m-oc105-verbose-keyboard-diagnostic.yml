@@ -73,9 +73,12 @@ jobs:
         working-directory: OpenCorePkg
         run: |
           set -euo pipefail
-          ./build_duet.tool
-          ./build_oc.tool
-          find Binaries -maxdepth 1 -type f -name '*DEBUG*.zip' -print
+          # Build only the X64 OpenCore firmware binary. The full packaging
+          # target also builds unrelated host utilities (e.g. MicroTool), which
+          # are not needed for this EFI diagnostic and can fail independently.
+          TARGETS=DEBUG ARCHS=X64 SKIP_PACKAGE=1 ./build_oc.tool DEBUG
+          test -s UDK/Build/OpenCorePkg/DEBUG_XCODE5/X64/OpenCore.efi
+          shasum -a 256 UDK/Build/OpenCorePkg/DEBUG_XCODE5/X64/OpenCore.efi
 
       - name: Assemble keyboard verbose diagnostic EFI
         env:
@@ -91,9 +94,6 @@ jobs:
           echo "f799c3b0be0a619230e1301f657f553e9f5db7edd7bd91ac9a4820c47442c38f  baseline.zip" | shasum -a 256 --check
           mkdir baseline official-custom
           unzip -oq baseline.zip -d baseline
-          custom_zip="$(find OpenCorePkg/Binaries -maxdepth 1 -type f -name '*DEBUG*.zip' -print -quit)"
-          test -n "$custom_zip"
-          unzip -oq "$custom_zip" -d official-custom
           python3 - <<'PY'
           import hashlib, plistlib, shutil
           from pathlib import Path
@@ -101,9 +101,8 @@ jobs:
           assert len(configs)==1,configs
           oc=configs[0].parent
           efi=oc.parent
-          candidates=list(Path("official-custom").glob("**/OC/OpenCore.efi"))
-          assert len(candidates)==1,candidates
-          source=candidates[0]
+          source=Path("OpenCorePkg/UDK/Build/OpenCorePkg/DEBUG_XCODE5/X64/OpenCore.efi")
+          assert source.is_file() and source.stat().st_size > 100000, source
           target=oc/"OpenCore.efi"
           shutil.copy2(source,target)
           digest=hashlib.sha256(target.read_bytes()).hexdigest()
@@ -142,10 +141,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          validator="$(find OpenCorePkg/Binaries -type f -name ocvalidate -o -name ocvalidate.linux | head -n 1)"
-          if [ -z "$validator" ]; then
-            validator="$(find official-custom -type f -name ocvalidate -o -name ocvalidate.linux | head -n 1)"
-          fi
+          validator="$(find baseline -type f -name ocvalidate -o -name ocvalidate.linux | head -n 1)"
           test -n "$validator"
           chmod +x "$validator"
           "$validator" verbose-output/EFI/OC/config.plist
