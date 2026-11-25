@@ -73,6 +73,24 @@ jobs:
           test -d "$DEVELOPER_DIR"
           xcrun --find clang
           src="$(/usr/bin/curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh)"
+          # Upstream ocbuild currently pins Xcode 26.6.0, while this GitHub
+          # macos-15 runner image has Xcode 16.4 installed. Keep ocbuild's
+          # environment setup but bind its developer directory to the
+          # runner's verified active Xcode instead of its stale hard-coded path.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p=Path("/tmp/ocbuild-ci-bootstrap.sh")
+          s=os.environ["OCBUILD_BOOTSTRAP"]
+          old='XCODE_DIR="/Applications/Xcode_VERSION.app/Contents/Developer"'
+          new='XCODE_DIR="${DEVELOPER_DIR}"'
+          if s.count(old) != 1:
+              raise SystemExit("Unexpected upstream ocbuild Xcode path; refusing unverified patch")
+          p.write_text(s.replace(old,new))
+          print("PATCHED_OCBUILD_XCODE_DIR=ACTIVE_RUNNER_DEVELOPER_DIR")
+          PY
+          export OCBUILD_BOOTSTRAP="$src"
+          src="$(cat /tmp/ocbuild-ci-bootstrap.sh)"
           eval "$src"
 
       - name: Build OpenCore DEBUG binaries
