@@ -1,0 +1,158 @@
+name: Build B460M USB port 4 recovery diagnostic EFI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-b460m-usbport4-diagnostic.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - name: Check out project
+        uses: actions/checkout@v4
+
+      - name: Download and verify the exact deployed no-iGPU base EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-no-igpu-diagnostic-latest/B460M-iGPU-Isolation-Diagnostic-EFI.zip" \
+            -o base.zip
+          echo "7d37511a7926ea91958a2c37889053f93dd5e4301afa2d3d498bf69dd8ff19db  base.zip" | shasum -a 256 --check -
+          unzip -q base.zip -d base
+          test -s base/EFI/OC/config.plist
+          test -s base/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
+          test -s base/EFI/BOOT/BOOTx64.efi
+
+      - name: Restore only USB port 4 HS/SS companion pair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          root = Path("base/EFI/OC")
+          mp = root / "Kexts/UTBMap.kext/Contents/Info.plist"
+          m = plistlib.loads(mp.read_bytes())
+          ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+
+          assert "HS04" not in ports and "SS04" not in ports
+          assert set(ports) == {"HS01","HS02","HS03","HS05","HS06","HS07","SS01","SS02","SS03"}
+          ports["HS04"] = {
+              "UsbConnector": 3,
+              "port": (4).to_bytes(4, "little"),
+          }
+          ports["SS04"] = {
+              "UsbConnector": 3,
+              "port": (20).to_bytes(4, "little"),
+          }
+          assert int.from_bytes(ports["HS04"]["port"], "little") == 4
+          assert int.from_bytes(ports["SS04"]["port"], "little") == 20
+          assert len(ports) == 11
+          mp.write_bytes(plistlib.dumps(m, fmt=plistlib.FMT_XML, sort_keys=True))
+
+          cp = root / "config.plist"
+          c = plistlib.loads(cp.read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          args = c["NVRAM"]["Add"][guid]["boot-args"].split()
+          assert "-wegnoigpu" in args and "-wegnoegpu" not in args
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          assert c["Misc"]["Security"]["ScanPolicy"] == 0x00200703
+          assert c["Kernel"]["Quirks"]["XhciPortLimit"] is False
+          assert c["Kernel"]["Add"][-2]["BundlePath"] == "USBToolBox.kext"
+          assert c["Kernel"]["Add"][-1]["BundlePath"] == "UTBMap.kext"
+          cp.write_bytes(plistlib.dumps(c, fmt=plistlib.FMT_XML, sort_keys=True))
+          print("PASS: restored HS04(index 4)+SS04(index 20), USB port 4 companion pair only")
+          print("PASS: -wegnoigpu retained; RX 570 not disabled; USBToolBox RHUB strategy retained")
+          PY
+
+      - name: Validate OpenCore 1.0.8 and all referenced files
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
+          mkdir -p /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          validator="$(find /tmp/oc -type f -name ocvalidate -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" base/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root = Path("base/EFI/OC")
+          c = plistlib.loads((root/"config.plist").read_bytes())
+          m = plistlib.loads((root/"Kexts/UTBMap.kext/Contents/Info.plist").read_bytes())
+          ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert len(ports) == 11
+          assert set(ports) == {"HS01","HS02","HS03","HS04","HS05","HS06","HS07","SS01","SS02","SS03","SS04"}
+          assert int.from_bytes(ports["HS04"]["port"],"little") == 4
+          assert int.from_bytes(ports["SS04"]["port"],"little") == 20
+          assert c["Kernel"]["Quirks"]["XhciPortLimit"] is False
+          assert c["Misc"]["Security"]["ScanPolicy"] == 0x00200703
+          assert c["Misc"]["Boot"]["Timeout"] == 0
+          guid="7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          args=c["NVRAM"]["Add"][guid]["boot-args"].split()
+          assert "-wegnoigpu" in args and "-wegnoegpu" not in args
+          for x in c["Kernel"]["Add"]: assert (root/"Kexts"/x["BundlePath"]).exists(), x["BundlePath"]
+          for x in c["ACPI"]["Add"]: assert (root/"ACPI"/x["Path"]).exists(), x["Path"]
+          for x in c["UEFI"]["Drivers"]: assert (root/"Drivers"/x["Path"]).exists(), x["Path"]
+          print("PASS: 11-port UTBMap; port-4 HS/SS pair present; all config references resolve")
+          PY
+
+      - name: Create manifest and ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > base/USB-PORT4-DIAGNOSTIC-README.txt <<'EOF'
+          B460M-PLUS USB PORT 4 COMPANION-PAIR DIAGNOSTIC EFI
+
+          Base: the exact SHA256-pinned no-iGPU EFI already deployed and tested to reach macOS Setup Assistant.
+          Only USB map change: restore HS04 (USB2 companion, index 4) and SS04 (USB3 lane, index 20).
+          Retained: USBToolBox.kext + UTBMap.kext, existing RHUB ACPI strategy, iMac20,1 test SMBIOS,
+          -wegnoigpu, RX 570 display path, USB-only ScanPolicy, and all other base settings.
+
+          Physical identification: ASUS official B460M-PLUS manual labels the blue USB pair immediately
+          left of the Ethernet jack as USB 3.2 Gen 1 ports 3 and 4. The lower port in that pair is port 4.
+          The mapping names HS04/SS04 are a reasoned controller-port-number correspondence, not yet
+          hardware-enumeration-confirmed on this individual board.
+
+          This is a separate diagnostic package. It does not modify internal disks and is not claimed
+          hardware-verified until the user tests it.
+          EOF
+          {
+            echo "# USB port 4 diagnostic EFI"
+            echo "- Base SHA256: 7d37511a7926ea91958a2c37889053f93dd5e4301afa2d3d498bf69dd8ff19db"
+            echo "- Restored only HS04 index 4 and SS04 index 20"
+            echo "- OpenCore 1.0.8 matching ocvalidate passed"
+            echo "- Hardware enumeration still requires a real boot test"
+            echo
+            find base/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
+          } > base/BUILD-MANIFEST.md
+          cd base
+          zip -qr ../B460M-USB-Port4-Diagnostic-EFI.zip EFI BUILD-MANIFEST.md USB-PORT4-DIAGNOSTIC-README.txt
+          cd ..
+          unzip -t B460M-USB-Port4-Diagnostic-EFI.zip
+          shasum -a 256 B460M-USB-Port4-Diagnostic-EFI.zip
+
+      - name: Publish separate diagnostic release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-usbport4-diagnostic
+          name: B460M USB port 4 companion-pair diagnostic EFI
+          target_commitish: ${{ github.sha }}
+          files: B460M-USB-Port4-Diagnostic-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
