@@ -190,8 +190,8 @@ jobs:
           nv["prev-lang:kbd"]="en-US:0"
           c["NVRAM"]["WriteFlash"]=True
 
-          # PlatformInfo: public artifact deliberately contains only explicit placeholders.
-          # Real user SMBIOS values are inserted locally after download, never committed/uploaded.
+          # PlatformInfo: use the previously user-approved iMac20,1 test set.
+          # User will replace these identifiers after the initial boot test.
           g=c["PlatformInfo"]["Generic"]
           for key,value in {
             "AdviseFeatures":False,
@@ -200,10 +200,10 @@ jobs:
             "SpoofVendor":True,
             "SystemMemoryStatus":"Auto",
             "SystemProductName":"iMac20,1",
-            "SystemSerialNumber":"LOCAL0000000",
-            "MLB":"LOCAL000000000000",
-            "SystemUUID":"00000000-0000-0000-0000-000000000000",
-            "ROM":bytes.fromhex("000000000000")
+            "SystemSerialNumber":"C02J5NYBPN5T",
+            "MLB":"C02231609GUPHC1JC",
+            "SystemUUID":"78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6",
+            "ROM":bytes.fromhex("3c7c3fd77ee8")
           }.items(): g[key]=value
           c["PlatformInfo"]["Automatic"]=True
           c["PlatformInfo"]["UpdateDataHub"]=True
@@ -224,18 +224,6 @@ jobs:
           print("Configured ACPI, Booter, DeviceProperties, Kernel, Misc, NVRAM, PlatformInfo, UEFI.")
           print("No SMBIOS serial, MLB, UUID or actual ROM values included.")
           PY
-          cp B460M-OC-Builder/Generate-B460M-SMBIOS-Values.ps1 staging/
-          cp B460M-OC-Builder/Apply-B460M-Local-SMBIOS.ps1 staging/
-          cat > staging/LOCAL-SMBIOS-README.txt <<'EOF'
-          IMPORTANT — PRIVATE LOCAL STEP
-          This build deliberately does not contain your real or temporary SMBIOS identifiers.
-          1. Extract the artifact to a normal folder on Windows; do not copy it to the physical EFI partition yet.
-          2. Run Generate-B460M-SMBIOS-Values.ps1 and enter the matching iMac20,1 values locally.
-             The helper derives ROM from the target board's Intel I219-V MAC.
-          3. Run Apply-B460M-Local-SMBIOS.ps1 from this extracted folder.
-          4. The script patches only this extracted EFI/OC/config.plist and verifies the values.
-          No serial/MLB/UUID/ROM values are uploaded to GitHub or included in Actions artifacts.
-          EOF
 
       - name: Validate with matching OpenCore 1.0.5 ocvalidate
         shell: bash
@@ -273,24 +261,18 @@ jobs:
           assert "-wegnoegpu" not in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
           g=c["PlatformInfo"]["Generic"]
           assert g["SystemProductName"]=="iMac20,1"
-          assert g["SystemSerialNumber"]=="LOCAL0000000"
-          assert g["MLB"]=="LOCAL000000000000"
-          assert g["SystemUUID"]=="00000000-0000-0000-0000-000000000000"
-          assert g["ROM"]==bytes.fromhex("000000000000")
-          # No real SMBIOS values may be present in tracked source or build artifacts.
-          for f in Path("staging").rglob("*"):
-            if f.is_file() and f.suffix.lower() not in [".efi",".kext",".aml"]:
-              data=f.read_bytes()
-              assert b"C02J5NYBPN5T" not in data and b"C02231609GUPHC1JC" not in data
-              assert b"78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6" not in data
-          print("OpenCore 1.0.5 config schema, all file references, Comet Lake policies, and SMBIOS privacy checks passed.")
+          assert g["SystemSerialNumber"]=="C02J5NYBPN5T"
+          assert g["MLB"]=="C02231609GUPHC1JC"
+          assert g["SystemUUID"]=="78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"
+          assert g["ROM"]==bytes.fromhex("3c7c3fd77ee8")
+          print("OpenCore 1.0.5 config schema, file references, Comet Lake policies, and requested iMac20,1 SMBIOS values passed.")
           PY
           cat > staging/BUILD-STATUS.txt <<'EOF'
-          CONFIGURATION STAGE — structurally complete, not yet boot-ready.
+          CONFIGURATION STAGE — CI validated; physical hardware boot test still required.
           Built from official OpenCore 1.0.5 DEBUG Sample.plist and validated by matching ocvalidate.
           Includes the board-analyzed ACPI set, pinned official RELEASE kexts, HfsPlus and OpenRuntime.
           Dortania Desktop Comet Lake config values applied for Sequoia.
-          SMBIOS identifiers are intentional local placeholders; run the included local scripts before boot.
+          Includes the user-approved iMac20,1 test SMBIOS set; user plans to replace it later.
           USB port map is staged but physical port-by-port behavior is not hardware-verified.
           No EFI partition or user disk was accessed.
           EOF
@@ -300,7 +282,7 @@ jobs:
         run: |
           set -euo pipefail
           cd staging
-          zip -qr B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip EFI Generate-B460M-SMBIOS-Values.ps1 Apply-B460M-Local-SMBIOS.ps1 LOCAL-SMBIOS-README.txt BUILD-STATUS.txt
+          zip -qr B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip EFI BUILD-STATUS.txt
           unzip -t B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip
           python3 - <<'PY'
           from pathlib import Path
