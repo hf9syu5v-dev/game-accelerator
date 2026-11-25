@@ -44,18 +44,15 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
+          import re
           from pathlib import Path
           p=Path("OpenCorePkg/Library/OcInputLib/Keycode/AIK.c")
           s=p.read_text()
-          old='''      DEBUG ((
-        DEBUG_VERBOSE,
-        "AIK: Key scan 0x%X uni 0x%X Shift 0x%X toggle 0x%X at %Lu\\n",'''
-          new='''      DEBUG ((
-        DEBUG_INFO,
-        "AIK: Key scan 0x%X uni 0x%X Shift 0x%X toggle 0x%X at %Lu\\n",'''
-          if s.count(old)!=1:
-              raise SystemExit(f"Expected exactly one key-scan DEBUG_VERBOSE block, got {s.count(old)}")
-          p.write_text(s.replace(old,new))
+          pattern=r'(DEBUG\\s*\\(\\(\\s*)DEBUG_VERBOSE(\\s*,\\s*"AIK: Key scan)'
+          s2,n=re.subn(pattern,r'\\1DEBUG_INFO\\2',s)
+          if n != 1:
+              raise SystemExit(f"Expected exactly one key-scan DEBUG_VERBOSE block, got {n}")
+          p.write_text(s2)
           print("PATCHED=AIK key scan log DEBUG_VERBOSE -> DEBUG_INFO")
           PY
           grep -n -A2 'AIK: Key scan' OpenCorePkg/Library/OcInputLib/Keycode/AIK.c
