@@ -96,7 +96,6 @@ jobs:
           print("ACPI config-to-file cross-check passed.")
           PY
           cp oc105/X64/EFI/OC/OpenCore.efi staging/EFI/OC/
-          cp oc105/X64/EFI/OC/OpenRuntime.efi staging/EFI/OC/
           cp oc105/X64/EFI/BOOT/BOOTx64.efi staging/EFI/BOOT/
           mkdir -p staging/EFI/OC/Drivers
           cp oc105/X64/EFI/OC/Drivers/OpenRuntime.efi staging/EFI/OC/Drivers/
