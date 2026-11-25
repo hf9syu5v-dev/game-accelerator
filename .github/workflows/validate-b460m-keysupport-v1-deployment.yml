@@ -50,7 +50,7 @@ jobs:
           }
           if ($source -match 'PENDING_[A-Z_]+') { throw 'Artifact SHA256 pin is incomplete.' }
           if (!$launcher.Contains('RunAsAdministrator') -or !$launcher.Contains('LASTEXITCODE')) { throw 'PowerShell launcher privilege/exit checks missing.' }
-          if (!$launcher.Contains('PyManager\\python.exe')) { throw 'Previously verified PyManager Python path is not searched.' }
+          if (!$launcher.Contains('PyManager\python.exe')) { throw 'Previously verified PyManager Python path is not searched.' }
           'PYTHON_SYNTAX=PASS'
           'STATIC_DESTRUCTIVE_OPERATION_SCAN=PASS'
           'USB_IDENTITY_AND_ROLLBACK_GUARDS=PASS'
