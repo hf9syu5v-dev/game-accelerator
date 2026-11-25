@@ -172,7 +172,8 @@ need(misc, "Boot").update({
     "PickerMode": "Builtin",
     "PickerVariant": "Auto",
     "ShowPicker": True,
-    "Timeout": 5,
+    # Never auto-launch an internal OS during the initial removable-USB picker test.
+    "Timeout": 0,
 })
 need(misc, "Debug").update({
     "AppleDebug": True,
