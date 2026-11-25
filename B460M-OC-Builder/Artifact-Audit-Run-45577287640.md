@@ -58,7 +58,6 @@ Before a first boot:
 3. Never write to or repartition the internal WD SN720 Windows disk.
 4. Do not call this artifact bootable until target-machine testing and a separate approved candidate build are complete.
 
-
 ## Follow-up review: USB map and CPU evidence
 
 A direct read of the supplied `UTBMap.kext/Contents/Info.plist` confirms 11 entries:
@@ -68,8 +67,24 @@ A direct read of the supplied `UTBMap.kext/Contents/Info.plist` confirms 11 entr
 - SS01–SS04 use indices 17–20 and connector type 3.
 - Declared port-count is 20.
 
-These are structural facts only. The repository contains no evidence that these indices were physically mapped on this exact B460M-PLUS board. Do not treat the map as hardware-verified. The 2.4/5-Gbps companion pairing and case/front-panel connector types must be checked on the target machine.
+These are structural facts only. The repository contains no evidence that these indices were physically mapped on this exact B460M-PLUS board. Do not treat the map as hardware-verified. The USB 2/USB 3 companion pairing and case/front-panel connector types must be checked on the target machine.
 
-A read-only Windows PowerShell 5.1+ helper was added at [Read-B460M-CPU-Info.ps1](Read-B460M-CPU-Info.ps1). It collects WMI CPU identity and topology fields without changing BIOS, EFI, configuration or disks. Its WMI ProcessorId prefix is a useful cross-check, not a substitute for a direct CPUID instruction capture. The user must run it on the target B460M Windows installation and review the resulting local report before sharing.
+### CPU report received from target Windows installation
+
+The user ran the read-only PowerShell helper on the target Windows installation. Reported values:
+- WMI processor name: `Genuine Intel(R) CPU 0000 @ 3.00GHz`
+- Manufacturer: `GenuineIntel`
+- WMI ProcessorId: `BFEBFBFF000A0650`
+- Cores / logical processors: 6 / 12
+- MaxClockSpeed: 3000 MHz
+- Environment and ComputerSystem logical processor counts: 12
+
+Interpretation:
+- The 6-core/12-thread topology matches the planned Comet Lake-S configuration.
+- For this 16-hex-digit Intel WMI ProcessorId representation, the trailing 8 digits `000A0650` are the CPUID signature candidate. The leading `BFEBFBFF` must **not** be interpreted as CPUID Leaf 1 EAX.
+- Candidate signature `0x000A0650` decodes to Family 6, Model 0xA06 (extended model A, base model 6), Stepping 0, consistent with the previously observed G0/Comet Lake-S identification.
+- WMI data is firmware/OS-reported and is not an independent direct CPUID instruction capture. The generic CPU name and blank WMI Family/Stepping/Revision fields do not establish a retail SKU; keep the exact ES identity provisional until direct CPUID evidence is collected.
+
+The initial helper version incorrectly extracted the first 8 digits. This has been corrected: [Read-B460M-CPU-Info.ps1](Read-B460M-CPU-Info.ps1) now extracts the final 8 digits and labels them as a WMI-derived candidate only.
 
 This audit records build and archive verification only; it does not certify hardware compatibility or bootability.
