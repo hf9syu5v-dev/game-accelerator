@@ -32,11 +32,20 @@ Write-Host ("TARGET VERIFIED: Disk {0}; {1}; Serial {2}; F: FAT32 ESP." -f $disk
 foreach ($n in @('EFI','com.apple.recovery.boot','USB-BUILD-REPORT.txt')) {
     if (Test-Path -LiteralPath (Join-Path $UsbRoot $n)) { Stop-Deploy "SAFETY_STOP: F:\$n already exists. Nothing overwritten." }
 }
-$downloads = Join-Path $env:USERPROFILE 'Downloads'
-$zipCandidates = @(Get-ChildItem -LiteralPath $downloads -Filter '*.zip' -File -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)NO.?IGPU|15043941995' } | Sort-Object LastWriteTime -Descending)
-if (!$zipCandidates.Count) { Stop-Deploy 'ARTIFACT_ZIP_NOT_FOUND: downloaded NO-IGPU diagnostic artifact ZIP must be in Downloads.' }
-
 New-Item -ItemType Directory -Path $Work -Force | Out-Null
+$artifactZip = Join-Path $Work 'B460M-iGPU-Isolation-Diagnostic-EFI.zip'
+$artifactUrl = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-no-igpu-diagnostic-latest/B460M-iGPU-Isolation-Diagnostic-EFI.zip'
+$artifactSha256 = '27611d55fde098f6ff5ece81b53620e64baca390e70ad1b3022c3b2b643831e0'
+Write-Host 'DOWNLOADING_EFI: fetching the verified no-iGPU package from the project release...'
+try {
+    Invoke-WebRequest -Uri $artifactUrl -OutFile $artifactZip -UseBasicParsing
+} catch {
+    Stop-Deploy "ARTIFACT_DOWNLOAD_FAILED: direct project release asset is not published or reachable yet. Details: $($_.Exception.Message)"
+}
+if (!(Test-Path -LiteralPath $artifactZip -PathType Leaf) -or (Get-Item -LiteralPath $artifactZip).Length -lt 1MB) { Stop-Deploy 'ARTIFACT_DOWNLOAD_FAILED: downloaded package is missing or unexpectedly small.' }
+if ((Get-Sha256 $artifactZip) -ne $artifactSha256) { Stop-Deploy 'ARTIFACT_SHA256_MISMATCH: downloaded EFI package does not match the validated build.' }
+Write-Host 'ARTIFACT_DOWNLOAD_AND_SHA256=PASS' -ForegroundColor Green
+$zipCandidates = @([IO.FileInfo]$artifactZip)
 try {
     $sourceEfi = $null
     $idx = 0
