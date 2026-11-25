@@ -1,8 +1,9 @@
-name: Validate B460M OpenUsbKbDxe deployment script
+name: Validate B460M OpenUsbKbDxe Python deployment
 
 on:
   push:
     paths:
+      - "B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic.py"
       - "B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic-Contents.ps1"
       - ".github/workflows/validate-b460m-openusbkbd-deployment.yml"
   workflow_dispatch:
@@ -15,64 +16,45 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: PowerShell 5.1 parser and static safety audit
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python syntax and static safety audit
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $p = 'B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic-Contents.ps1'
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p), [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count) { $errors | Format-List | Out-String | Write-Error }
-          $s = Get-Content -LiteralPath $p -Raw
-          $forbidden = @('Clear-Disk','Initialize-Disk','New-Partition','Remove-Partition','Format-Volume','Set-Partition','Set-Disk','diskpart','clean all')
-          foreach ($word in $forbidden) { if ($s -match [regex]::Escape($word)) { throw "Forbidden destructive command token: $word" } }
-          foreach ($required in @('000000123ADC','LITEON I T LCS-128L9S','128035676160','8a9758328f1c032c83963d955b5e05faa734dc41d1e79c06f7267e08de5ec77f','OpenUsbKbDxe.efi','KeySupport','PollAppleHotKeys','com.apple.recovery.boot','Get-Partition','Get-Disk','Rename-Item')) {
-            if ($s -notmatch [regex]::Escape($required)) { throw "Missing required guard/assertion: $required" }
+          $py = 'B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic.py'
+          $ps = 'B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic-Contents.ps1'
+          python -m py_compile $py
+          $source = Get-Content -LiteralPath $py -Raw
+          $launcher = Get-Content -LiteralPath $ps -Raw
+          foreach ($forbidden in @('Clear-Disk','Initialize-Disk','New-Partition','Remove-Partition','Format-Volume','Set-Partition','Set-Disk','diskpart','clean all','format.com')) {
+            if ($source.Contains($forbidden) -or $launcher.Contains($forbidden)) { throw "Forbidden destructive command token: $forbidden" }
           }
-          if ($s -notmatch 'BusType\s+-ne\s+''USB''' -or $s -notmatch '\$disk\.IsBoot' -or $s -notmatch '\$disk\.IsSystem') { throw 'Target disk safety identity checks missing.' }
-          'POWERSHELL_5_1_PARSE=PASS'
+          foreach ($required in @('000000123ADC','LITEON I T LCS-128L9S','128035676160','Get-Partition','Get-Disk','IsBoot','IsSystem','relative_to','sha256','BACKUP','RECOVERY')) {
+            if (!$source.Contains($required)) { throw "Missing safety/validation requirement: $required" }
+          }
+          if (!$launcher.Contains('RunAsAdministrator') -or !$launcher.Contains('LASTEXITCODE')) { throw 'PowerShell launcher privilege/exit checks missing.' }
+          'PYTHON_SYNTAX=PASS'
           'STATIC_DESTRUCTIVE_OPERATION_SCAN=PASS'
-          'TARGET_IDENTITY_GUARDS=PASS'
-      - name: Artifact SHA256, archive and staging-copy simulation
+          'USB_IDENTITY_GUARDS=PASS'
+
+      - name: Python self-test (ZIP, staging, hashes, swap and rollback)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python 'B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic.py' --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Python self-test failed.' }
+
+      - name: Pinned EFI artifact validation and staging simulation
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
           $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-openusbkbd-keyboard-diagnostic/B460M-OpenUsbKbDxe-Keyboard-Diagnostic-EFI.zip'
-          $expected = '8a9758328f1c032c83963d955b5e05faa734dc41d1e79c06f7267e08de5ec77f'
-          $w = Join-Path $env:TEMP ('B460M-CI-' + [guid]::NewGuid().ToString('N'))
-          try {
-            New-Item -ItemType Directory -Path $w | Out-Null
-            $z = Join-Path $w 'artifact.zip'
-            Invoke-WebRequest -Uri $url -OutFile $z -UseBasicParsing
-            if ((Get-FileHash $z -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Artifact SHA256 mismatch.' }
-            Expand-Archive -LiteralPath $z -DestinationPath (Join-Path $w 'src')
-            $src = Join-Path (Join-Path $w 'src') 'EFI'
-            foreach ($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Drivers\OpenUsbKbDxe.efi','OC\Kexts\UTBMap.kext\Contents\Info.plist')) {
-              if (!(Test-Path -LiteralPath (Join-Path $src $rel) -PathType Leaf)) { throw "Missing artifact file: $rel" }
-            }
-            [xml]$cfg = Get-Content -LiteralPath (Join-Path $src 'OC\config.plist') -Raw
-            $txt = $cfg.OuterXml
-            if ($txt -notmatch '<key>KeySupport</key>\s*<false\s*/>' -or $txt -notmatch 'OpenUsbKbDxe.efi' -or $txt -notmatch '<key>PollAppleHotKeys</key>\s*<false\s*/>') { throw 'Keyboard configuration assertions failed.' }
-            $srcRoot = (Get-Item -LiteralPath $src).FullName.TrimEnd([char]92)
-            $files = @(Get-ChildItem -LiteralPath $srcRoot -File -Recurse)
-            $stage = Join-Path $w 'staging'
-            New-Item -ItemType Directory -Path $stage | Out-Null
-            & robocopy $srcRoot $stage /E /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null
-            $copyExit = $LASTEXITCODE
-            if ($copyExit -ge 8) { throw "Robocopy staging failed with exit code $copyExit" }
-            foreach ($f in $files) {
-              $prefix = $srcRoot + [IO.Path]::DirectorySeparatorChar
-              if (!$f.FullName.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) { throw "Source path escaped EFI root: $($f.FullName)" }
-              $relative = $f.FullName.Substring($prefix.Length)
-              $d = Join-Path $stage $relative
-              if (!(Test-Path -LiteralPath $d -PathType Leaf)) { throw "Staging file missing: $relative (expected $d)" }
-              if ((Get-FileHash $f.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $d -Algorithm SHA256).Hash) { throw "Staging hash mismatch: $relative" }
-            }
-            "ARTIFACT_SHA256=PASS"
-            "EFI_STRUCTURE_AND_KEYBOARD_CONFIG=PASS"
-            "TEMP_STAGING_COPY_SHA256=PASS; FILES=$($files.Count)"
-            "PHYSICAL_DISKS_TOUCHED=0"
-          } finally {
-            if (Test-Path $w) { Remove-Item $w -Recurse -Force }
-          }
+          $zip = Join-Path $env:TEMP 'B460M-OpenUsbKbDxe-pinned.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          python 'B460M-OC-Builder/Deploy-B460M-OpenUsbKbDxe-Keyboard-Diagnostic.py' --validate-artifact $zip
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned artifact validation failed.' }
