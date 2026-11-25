@@ -95,7 +95,7 @@ def check_target()->Path:
     return root
 
 def download(work:Path)->Path:
-    if ARTIFACT_SHA256=="PENDING_BUILD_SHA256": raise RuntimeError("Build SHA256 has not been pinned")
+    if len(ARTIFACT_SHA256)!=64: raise RuntimeError("Artifact SHA256 pin is invalid")
     z=work/"artifact.zip"
     req=urllib.request.Request(ARTIFACT_URL,headers={"User-Agent":"B460M-OC-Builder"})
     with urllib.request.urlopen(req,timeout=90) as r,z.open("wb") as f: shutil.copyfileobj(r,f)
