@@ -23,6 +23,12 @@ jobs:
           - name: BUILTIN_MIRROR_OFF
             apple_event: Builtin
             mirroring: false
+          - name: BUILTIN_MIRROR_ON
+            apple_event: Builtin
+            mirroring: true
+          - name: AUTO_MIRROR_OFF
+            apple_event: Auto
+            mirroring: false
           - name: AUTO_MIRROR_ON
             apple_event: Auto
             mirroring: true
