@@ -11,9 +11,15 @@ on:
 permissions:
   contents: read
 
+# Keep staging builds independent; never cancel an in-progress EFI validation run.
+concurrency:
+  group: b460m-opencore-staging-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   build-staging:
-    runs-on: macos-14
+    runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -170,9 +176,9 @@ jobs:
           } > build/BUILD-MANIFEST.md
           cat > build/DO-NOT-BOOT.txt <<'EOF'
           This is an incomplete staging EFI, not a bootable OpenCore configuration.
-          No config.plist is included. Do not use it to boot or install macOS.
-          Hardware-specific config.plist, SMBIOS setup, OC validation, USB mapping,
-          and real-hardware testing are still outstanding.
+          A hardware-specific config.plist candidate is included, but it is not approved
+          for booting. USB port mapping and real-hardware validation are still outstanding.
+          Do not use this artifact to boot or install macOS. No disk image or physical EFI write is included.
           EOF
           test -s build/EFI/OC/config.plist
 
