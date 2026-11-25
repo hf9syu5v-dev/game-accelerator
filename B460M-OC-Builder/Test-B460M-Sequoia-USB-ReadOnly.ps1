@@ -98,15 +98,17 @@ def check_entries(items,label):
         if not isinstance(x,dict):
             issues.append(f"{label}[{i}] is not a dictionary"); continue
         if x.get('Enabled') is True:
-            path=x.get('Path')
+            # OpenCore schema: ACPI/UEFI use Path; Kernel -> Add uses BundlePath.
+            field='BundlePath' if label=='Kernel' else 'Path'
+            path=x.get(field)
             if not isinstance(path,str) or not path:
-                issues.append(f"{label}[{i}] enabled entry has no Path")
+                issues.append(f"{label}[{i}] enabled entry has no {field}")
             elif label=='ACPI':
                 full=os.path.join(os.path.dirname(p),'ACPI',path)
                 if not os.path.isfile(full): issues.append(f"Enabled ACPI file missing: {path}")
             elif label=='Kernel':
                 full=os.path.join(os.path.dirname(p),'Kexts',path)
-                if not os.path.exists(full): issues.append(f"Enabled kext missing: {path}")
+                if not os.path.isdir(full): issues.append(f"Enabled kext bundle missing: {path}")
             elif label=='UEFI':
                 full=os.path.join(os.path.dirname(p),'Drivers',path)
                 if not os.path.isfile(full): issues.append(f"Enabled driver missing: {path}")
