@@ -19,20 +19,24 @@ Purpose: read-only preflight before any first-boot attempt with the staging EFI.
 | DVMT Pre-Allocated | 512M | Confirmed |
 | RC6 (Render Standby) | Enabled | Confirmed |
 | CFG Lock menu | User could not find the option | Treat as unavailable; config enables AppleXcpmCfgLock=True per Dortania's Comet Lake guidance |
+| Hyper-Threading | Enabled (BIOS screenshot: `Hyper-Threading 01.png`) | Confirmed |
+| XHCI Hand-off | Enabled (BIOS screenshot: `XHCI Hand-off 01.png`) | Confirmed |
+| Secure Boot → OS Type | Other OS; Secure Boot state field displays `User` (screenshot: `Secure boot 01.png`) | OS Type confirmed. `User` alone does not prove Secure Boot enforcement is disabled; retain as not fully verified until the Secure Boot status/key screen is inspected or the firmware behavior is otherwise confirmed |
+| Intel VT-x | Screenshot says `Intel VT-x Technology: Supported` (screenshot: `Vt-x 01.png`) | CPU capability confirmed; this does **not** establish that the BIOS VT-x setting is enabled. BIOS toggle remains unverified |
 
 ## Read-only checks still needed before a hardware boot
 
 | BIOS item | Dortania Comet Lake recommendation | Current evidence |
 |---|---|---|
 | Fast Boot | Disabled | Not yet confirmed |
-| Secure Boot | Disabled | Not yet confirmed |
+| Secure Boot | Disabled | OS Type is `Other OS`; status field says `User`. Actual enforcement state remains unverified |
 | CSM / Compatibility Support Module | Disabled; use UEFI boot | Not yet confirmed |
-| VT-x | Enabled | Not yet confirmed |
-| Hyper-Threading | Enabled | Not yet confirmed |
+| VT-x | Enabled | CPU reports `Supported`; BIOS enable/disable state not shown |
+| Hyper-Threading | Enabled | Confirmed Enabled from uploaded BIOS screenshot |
 | Execute Disable Bit / XD | Enabled | Not yet confirmed |
-| XHCI Hand-off | Enabled | Not yet confirmed |
+| XHCI Hand-off | Enabled | Confirmed Enabled from uploaded BIOS screenshot |
 | SATA Controller Mode | AHCI | Not yet confirmed; **do not change until Windows storage configuration is understood** |
-| OS Type | Windows 8.1/10 UEFI mode, or firmware-specific equivalent | Not yet confirmed |
+| OS Type | Windows 8.1/10 UEFI mode, or firmware-specific equivalent | Confirmed `Other OS`; this is the firmware's non-Windows mode and is appropriate for the intended macOS setup |
 | Serial/COM and Parallel ports | Disabled if present | Not yet confirmed |
 | Intel SGX / Intel Platform Trust | Disabled if present | Not yet confirmed |
 | Thunderbolt | Disabled for initial install if present | Not yet confirmed |
