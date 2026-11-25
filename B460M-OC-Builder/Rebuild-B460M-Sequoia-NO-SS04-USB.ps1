@@ -101,9 +101,17 @@ try {
  $dp=Join-Path $Work 'diskpart.txt'
  @("select disk $($d.Number)",'clean','convert gpt','create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$Letter",'exit')|Set-Content $dp -Encoding ASCII
  $out=& diskpart.exe /s $dp 2>&1;$out|ForEach-Object{Write-Host $_};if($LASTEXITCODE -ne 0){Fail "DiskPart exit=$LASTEXITCODE"}
- $vol=Get-Volume -DriveLetter $Letter -ErrorAction Stop;$part=Get-Partition -DriveLetter $Letter -ErrorAction Stop
- if($part.DiskNumber -ne $d.Number -or ([string]$part.GptType).Trim('{}').ToLowerInvariant() -ne $Esp -or $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA'){Fail "Format verification failed: partition disk=$($part.DiskNumber), type=$($part.GptType), fs=$($vol.FileSystem), label=$($vol.FileSystemLabel)"}
- $root=$Letter+':\';New-Item -ItemType Directory (Join-Path $root 'EFI') -Force|Out-Null
+ # Refresh the Windows storage cache; Get-Volume -DriveLetter can miss a freshly assigned DiskPart volume.
+ if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
+ $root=$Letter+':\';$part=$null;$logical=$null
+ for($verifyTry=1;$verifyTry -le 10;$verifyTry++){
+  Start-Sleep -Seconds 2
+  $part=@(Get-Partition -DiskNumber $d.Number -ErrorAction SilentlyContinue | Where-Object{$_.DriveLetter -eq $Letter -and ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $Esp -and $_.Size -ge 15GB -and $_.Size -le 17GB}) | Select-Object -First 1
+  $logical=Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='"+$Letter+":'") -ErrorAction SilentlyContinue
+  if($part -and $logical -and $logical.FileSystem -eq 'FAT32' -and $logical.VolumeName -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}
+ }
+ if(!$part -or $part.DiskNumber -ne $d.Number -or !$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA' -or !(Test-Path $root)){Fail "Format verification failed after retry: partition_found=$([bool]$part), logical_disk_found=$([bool]$logical), fs=$($logical.FileSystem), label=$($logical.VolumeName), root_accessible=$(Test-Path $root). DiskPart reported format/assign success; USB was not cleaned again."}
+ New-Item -ItemType Directory (Join-Path $root 'EFI') -Force|Out-Null
  Get-ChildItem $src -Force|ForEach-Object{Copy-Item $_.FullName -Destination (Join-Path $root 'EFI') -Recurse -Force}
  Copy-Item -LiteralPath $rec -Destination $root -Recurse -Force
  foreach($f in $files){$rel=$f.FullName.Substring($src.Length).TrimStart([char]92);$dest=Join-Path (Join-Path $root 'EFI') $rel;if(!(Test-Path $dest -PathType Leaf) -or (Hash $dest) -ne (Hash $f.FullName)){Fail "EFI SHA256 mismatch: $rel"}}
