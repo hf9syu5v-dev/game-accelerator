@@ -12,7 +12,7 @@ $DriveLetter = 'E'
 $Log = Join-Path ([Environment]::GetFolderPath('Desktop')) ('B460M-USB-ESP-Repair-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 
 function Normalize-Guid([object]$Value) {
-    return ([string]$Value).Trim().Trim('{','}').ToLowerInvariant()
+    return ([string]$Value).Trim().Trim([char[]]@('{','}')).ToLowerInvariant()
 }
 
 Start-Transcript -LiteralPath $Log -Force | Out-Null
