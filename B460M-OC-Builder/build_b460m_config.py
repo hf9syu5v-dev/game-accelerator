@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Build a B460M-PLUS OpenCore 1.0.8 configuration candidate from the official Sample.plist.
-This creates a staging config only. USB mapping and real-hardware validation remain outstanding.
+"""Build a B460M-PLUS OpenCore 1.0.8 staging config from the official Sample.plist.
+The supplied UTBMap is included, but physical USB and full hardware validation remain outstanding.
 """
 import plistlib
 import sys
@@ -45,7 +45,7 @@ need(cfg, "PlatformInfo").update({
     "UpdateSMBIOSMode": "Create",
 })
 
-# ACPI: board-specific RHUB SSDT plus the previously inspected desktop tables.
+# ACPI: PLUG, desktop EC/USBX, and AWAC. USBToolBox handles the broken 400-series RHUB path.
 acpi = need(cfg, "ACPI")
 acpi["Add"] = [
     {"Comment": "CPU power management; Dortania PLUG", "Enabled": True, "Path": "SSDT-PLUG-DRTNIA.aml"},
