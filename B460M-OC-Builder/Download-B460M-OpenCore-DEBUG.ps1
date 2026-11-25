@@ -7,6 +7,7 @@ $Root = Join-Path $env:USERPROFILE "Downloads\B460M-OC-Builder"
 $ToolRoot = Join-Path $Root "Tools\OpenCore-1.0.8-DEBUG"
 $ExtractRoot = Join-Path $ToolRoot "Extracted"
 $EfiRoot = Join-Path $Root "EFI\EFI"
+$BootRoot = Join-Path $EfiRoot "BOOT"
 $OcRoot = Join-Path $EfiRoot "OC"
 $DriverRoot = Join-Path $OcRoot "Drivers"
 $ToolsRoot = Join-Path $OcRoot "Tools"
@@ -15,7 +16,7 @@ if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
     throw ("Project directory not found: " + $Root)
 }
 
-New-Item -ItemType Directory -Force -Path $ToolRoot, $ExtractRoot, $EfiRoot, $OcRoot, $DriverRoot, $ToolsRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $ToolRoot, $ExtractRoot, $EfiRoot, $BootRoot, $OcRoot, $DriverRoot, $ToolsRoot | Out-Null
 
 $ZipPath = Join-Path $ToolRoot "OpenCore-1.0.8-DEBUG.zip"
 $ZipUrl = "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip"
