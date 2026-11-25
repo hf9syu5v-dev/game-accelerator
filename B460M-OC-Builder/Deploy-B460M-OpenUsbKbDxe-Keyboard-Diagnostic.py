@@ -81,8 +81,8 @@ def validate_efi(efi: Path) -> list[Path]:
         "7C436110-AB2A-4BBB-A880-FE41995C9F82", {}
     ).get("boot-args", "")
     product = cfg.get("PlatformInfo", {}).get("Generic", {}).get("SystemProductName")
-    if inp.get("KeySupport") is not False or inp.get("PollAppleHotKeys") is not False:
-        raise RuntimeError("Expected UEFI Input KeySupport=false and PollAppleHotKeys=false")
+    if inp.get("KeySupport") is not False or boot.get("PollAppleHotKeys") is not False:
+        raise RuntimeError("Expected UEFI Input KeySupport=false and Misc Boot PollAppleHotKeys=false")
     if not driver_ok:
         raise RuntimeError("OpenUsbKbDxe.efi is not enabled in UEFI Drivers")
     if "-radvesa" not in args or product != "iMac20,1":
