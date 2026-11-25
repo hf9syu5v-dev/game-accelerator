@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 
 sing-box.exe
+
+# Local Hackintosh SMBIOS identifiers (never commit)
+B460M-SMBIOS-Values-LOCAL.txt
+**/B460M-SMBIOS-Values-LOCAL.txt
