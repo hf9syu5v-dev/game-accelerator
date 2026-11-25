@@ -57,12 +57,11 @@ jobs:
             $files = @(Get-ChildItem -LiteralPath $src -File -Recurse)
             $stage = Join-Path $w 'staging'
             New-Item -ItemType Directory -Path $stage | Out-Null
-            $sourceRoot = (Resolve-Path -LiteralPath $src).Path.TrimEnd('\')
             & robocopy $src $stage /E /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS | Out-Null
             $copyExit = $LASTEXITCODE
             if ($copyExit -ge 8) { throw "Robocopy staging failed with exit code $copyExit" }
             foreach ($f in $files) {
-              $relative = $f.FullName.Substring($sourceRoot.Length).TrimStart('\')
+              $relative = $f.FullName.Substring($src.Length).TrimStart([char]92)
               $d = Join-Path $stage $relative
               if (!(Test-Path -LiteralPath $d -PathType Leaf)) { throw "Staging file missing: $relative (expected $d)" }
               if ((Get-FileHash $f.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $d -Algorithm SHA256).Hash) { throw "Staging hash mismatch: $relative" }
