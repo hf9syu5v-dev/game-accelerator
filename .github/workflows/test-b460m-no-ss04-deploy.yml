@@ -33,8 +33,8 @@ jobs:
           $removeSets = @($remove.ParameterSets | Where-Object { $_.Parameters.Name -contains 'DiskNumber' -and $_.Parameters.Name -contains 'PartitionNumber' -and $_.Parameters.Name -contains 'AccessPath' })
           if (-not $addSets.Count -or -not $removeSets.Count) { throw 'No compatible DiskNumber + PartitionNumber + AccessPath parameter set' }
           $scriptText = Get-Content 'B460M-OC-Builder/Deploy-B460M-NO-SS04-EFI-To-USB.ps1' -Raw
-          if ($scriptText -notmatch '-Add-PartitionAccessPath.*-AccessPath' -or $scriptText -match '-Add-PartitionAccessPath.*-DriveLetter') { throw 'Deployment script does not use AccessPath for ESP mounting' }
-          if ($scriptText -notmatch '-Remove-PartitionAccessPath.*-AccessPath') { throw 'Deployment script does not use AccessPath for ESP unmounting' }
+          if ($scriptText -notmatch 'Add-PartitionAccessPath.*-AccessPath' -or $scriptText -match 'Add-PartitionAccessPath.*-DriveLetter') { throw 'Deployment script does not use AccessPath for ESP mounting' }
+          if ($scriptText -notmatch 'Remove-PartitionAccessPath.*-AccessPath') { throw 'Deployment script does not use AccessPath for ESP unmounting' }
           if ($add.Parameters.ContainsKey('DriveLetter')) { Write-Host 'Add cmdlet also exposes DriveLetter' }
           Write-Host ('ADD_PARTITION_ACCESS_PATH_PARAMETERS=' + (($add.Parameters.Keys | Sort-Object) -join ','))
           Write-Host ('REMOVE_PARTITION_ACCESS_PATH_PARAMETERS=' + (($remove.Parameters.Keys | Sort-Object) -join ','))
