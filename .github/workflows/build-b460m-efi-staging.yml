@@ -6,6 +6,7 @@ on:
     paths:
       - "B460M-OC-Builder/EFI/EFI/OC/ACPI/**"
       - "B460M-OC-Builder/build_b460m_config.py"
+      - "UTBMap.kext.rar"
       - ".github/workflows/build-b460m-efi-staging.yml"
 
 permissions:
@@ -26,7 +27,7 @@ jobs:
 
       - name: Install ACPICA compiler
         run: |
-          brew install acpica
+          brew install acpica unar
 
       - name: Prepare EFI directory structure
         shell: bash
@@ -96,8 +97,16 @@ jobs:
           stage_kext NVMeFix 1.1.3 https://github.com/acidanthera/NVMeFix/releases/download/1.1.3/NVMeFix-1.1.3-RELEASE.zip NVMeFix.kext
           stage_kext USBToolBox 1.2.0 https://github.com/USBToolBox/kext/releases/download/1.2.0/USBToolBox-1.2.0-RELEASE.zip USBToolBox.kext
           echo "c315a3a5acfd496dd97d0d19b4fbd1d487103d2fd541c5651583d4c9cebcfe07  /tmp/USBToolBox-1.2.0.zip" | shasum -a 256 --check -
+          # Extract the user's original RAR on the runner; never substitute a reconstructed plist.
+          mkdir -p /tmp/utbmap-source
+          unar -quiet -force-overwrite -output-directory /tmp/utbmap-source UTBMap.kext.rar
+          source_plist="$(find /tmp/utbmap-source -path '*/UTBMap.kext/Contents/Info.plist' -print -quit)"
+          test -n "$source_plist"
+          test -s "$source_plist"
           mkdir -p build/EFI/OC/Kexts/UTBMap.kext/Contents
-          cp B460M-OC-Builder/EFI/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist build/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
+          cp "$source_plist" build/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
+          cp "$source_plist" B460M-OC-Builder/EFI/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
+          shasum -a 256 "$source_plist" build/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
           python3 - <<'PY'
           import plistlib
           from pathlib import Path
