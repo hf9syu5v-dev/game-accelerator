@@ -267,7 +267,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          printf 'Official OpenCore 1.0.5 DEBUG\nKeySupport=Auto; AppleEvent=Auto; GraphicsInputMirroring=true\nTarget=65 (file log); DisplayLevel=2147483714 (verbose)\n' > debug-output/DIAGNOSTIC-REPORT.txt
+          printf 'Official OpenCore 1.0.5 DEBUG\nKeySupport=Auto; AppleEvent=Auto; GraphicsInputMirroring=true\nTarget=65 (file log); DisplayLevel=2147483714 (ERROR|WARN|INFO; not VERBOSE)\n' > debug-output/DIAGNOSTIC-REPORT.txt
           cd debug-output
           zip -qr ../B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip EFI DIAGNOSTIC-REPORT.txt
           unzip -t ../B460M-OpenCore-1.0.5-DEBUG-Firmware-Input-Audit.zip
