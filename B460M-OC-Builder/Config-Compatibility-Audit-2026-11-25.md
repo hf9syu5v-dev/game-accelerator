@@ -107,3 +107,15 @@ Run #35 adds ACPICA disassembly of all three enabled AML tables in an isolated t
 The ACPICA check's first attempts exposed only a script output-path assumption; the script now copies AML inputs into the temporary workspace before disassembly. Run #35 is the first successful artifact containing this additional validation. Full details: [Artifact-Audit-Run-45586016881.md](Artifact-Audit-Run-45586016881.md).
 
 The result is still **STAGING ONLY — NOT BOOTABLE** pending physical USB validation and target-machine hardware tests.
+
+## 12. Latest full validation — Run #37
+
+Run 45586826590 completed successfully from commit `2a135d630542828883ef2e4fc2b937a28a8b82d8`. Artifact ID `15009840043`, ZIP SHA-256 `6e2ac096e5e28757b8a5df3e4c51f5ba6ba3077414965509886a2ced25a48a80`.
+
+Run #37 includes the new hardware-initialization guardrails: only the UHD 630 headless platform property is injected; no speculative AMD framebuffer/disable arguments, audio layout, NVMe ASPM argument or CPU spoof is permitted. The initial Run #36 attempt failed because the assertion expected 16 zero bytes for empty CPUID emulation fields, while OpenCore 1.0.8 Sample.plist correctly defines those fields as empty data. The assertion was corrected to match the official sample; no generated config behavior was changed.
+
+Run #37 passed every workflow step, including matching OpenCore 1.0.8 `ocvalidate`, all kext metadata and x86_64 checks, ACPICA disassembly of all three AML tables, config assertions, manifest generation and artifact upload. The downloaded ZIP was independently inspected: config.plist parses, contains the expected iMac20,1 temporary test SMBIOS values, the single UHD 630 headless property, native/empty CPUID emulation fields, 8 enabled kexts, 3 enabled ACPI tables and 2 enabled UEFI drivers.
+
+See [Artifact-Audit-Run-45586826590.md](Artifact-Audit-Run-45586826590.md) and [Hardware-Initialization-Audit-2026-11-25.md](Hardware-Initialization-Audit-2026-11-25.md).
+
+Run #37 is the latest successful CI-validated staging artifact. It remains **STAGING ONLY — NOT BOOTABLE**; physical USB port mapping and all runtime hardware checks remain outstanding.
