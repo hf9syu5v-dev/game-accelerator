@@ -1,0 +1,53 @@
+name: Test NO-SS04 USB deployment script
+on:
+  push:
+    paths:
+      - 'B460M-OC-Builder/Deploy-B460M-NO-SS04-EFI-To-USB.ps1'
+      - '.github/workflows/test-b460m-no-ss04-deploy.yml'
+  workflow_dispatch:
+jobs:
+  windows-powershell-51:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse script with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'B460M-OC-Builder/Deploy-B460M-NO-SS04-EFI-To-USB.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Error }
+          Write-Host 'POWERSHELL_51_PARSE=PASS'
+      - name: Verify Storage cmdlet parameter sets
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module Storage
+          $add = Get-Command Add-PartitionAccessPath
+          $remove = Get-Command Remove-PartitionAccessPath
+          if (-not $add.Parameters.ContainsKey('AccessPath')) { throw 'Add-PartitionAccessPath lacks AccessPath' }
+          if (-not $remove.Parameters.ContainsKey('AccessPath')) { throw 'Remove-PartitionAccessPath lacks AccessPath' }
+          if ($add.Parameters.ContainsKey('DriveLetter')) { Write-Host 'Add cmdlet also exposes DriveLetter' }
+          Write-Host ('ADD_PARTITION_ACCESS_PATH_PARAMETERS=' + (($add.Parameters.Keys | Sort-Object) -join ','))
+          Write-Host ('REMOVE_PARTITION_ACCESS_PATH_PARAMETERS=' + (($remove.Parameters.Keys | Sort-Object) -join ','))
+          Write-Host 'STORAGE_PARAMETER_AUDIT=PASS'
+      - name: Verify ZIP extraction overloads
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $root = Join-Path $env:TEMP ([guid]::NewGuid().ToString('N'))
+          New-Item -ItemType Directory $root | Out-Null
+          try {
+            $zip = Join-Path $root 'test.zip'
+            $src = Join-Path $root 'src'
+            New-Item -ItemType Directory $src | Out-Null
+            Set-Content (Join-Path $src 'probe.txt') 'ok'
+            Compress-Archive -Path (Join-Path $src '*') -DestinationPath $zip
+            $dst = Join-Path $root 'dst'
+            [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $dst)
+            if ((Get-Content (Join-Path $dst 'probe.txt') -Raw).Trim() -ne 'ok') { throw 'ZIP extraction content mismatch' }
+            Write-Host 'ZIP_EXTRACTION=PASS'
+          } finally { Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue }
