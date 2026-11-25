@@ -6,8 +6,8 @@ $ProgressPreference = 'SilentlyContinue'
 
 $DiskModel = 'LITEON I T LCS-128L9S'
 $DiskSerial = '000000123ADC'
-$DiskSizeMin = 127GB
-$DiskSizeMax = 130GB
+$DiskSizeMin = 115GB
+$DiskSizeMax = 125GB
 $TargetLetter = 'E'
 $Fat32SizeMB = 16000
 $EfiZip = 'C:\temp\B460M-OpenCore-1.0.8-DEBUG-USB-BOOT-TEST-CANDIDATE.zip'
