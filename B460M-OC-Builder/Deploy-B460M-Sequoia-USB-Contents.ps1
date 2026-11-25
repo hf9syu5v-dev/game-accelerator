@@ -62,7 +62,7 @@ try {
     }
     $utb = Get-Content -LiteralPath (Join-Path $sourceEfi 'OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
     if ($utb -match 'HS04|SS04') { Stop-Deploy 'UTBMAP_CHECK_FAILED: HS04 or SS04 found.' }
-    $configText = Get-Content -LiteralPath (Join-Path $sourceEfi 'OC\\config.plist') -Raw
+    $configText = Get-Content -LiteralPath (Join-Path $sourceEfi 'OC\config.plist') -Raw
     if ($configText -notmatch '-wegnoigpu' -or $configText -match '-wegnoegpu') { Stop-Deploy 'BOOT_ARGS_CHECK_FAILED: expected -wegnoigpu and must not contain -wegnoegpu.' }
     if ($configText -notmatch 'iMac20,1') { Stop-Deploy 'SMBIOS_CHECK_FAILED: expected iMac20,1.' }
     $efiFiles = @(Get-ChildItem -LiteralPath $sourceEfi -File -Recurse)
