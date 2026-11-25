@@ -193,8 +193,9 @@ need(misc, "Security").update({
     "DmgLoading": "Signed",
     "EnablePassword": False,
     "ExposeSensitiveData": 6,
-    # USB-only scan for the first removable-media test; exclude internal SATA/NVMe boot entries.
-    "ScanPolicy": 0x200703,
+    # USB-only scan: 0x00080000 is the USB device bit. 0x00200000 is SD, not USB.
+    # Keep APFS/HFS/EFI filesystems enabled and internal SATA/NVMe devices excluded.
+    "ScanPolicy": 0x00080703,
     "SecureBootModel": "Default",
     "Vault": "Optional",
 })
