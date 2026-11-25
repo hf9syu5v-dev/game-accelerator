@@ -3,6 +3,7 @@ on:
   push:
     paths:
       - "B460M-OC-Builder/Rebuild-B460M-Sequoia-NO-SS04-USB.ps1"
+      - "B460M-OC-Builder/Resume-B460M-Sequoia-NO-SS04-USB.ps1"
       - ".github/workflows/test-b460m-clean-rebuild-script.yml"
   workflow_dispatch:
 permissions:
@@ -44,3 +45,27 @@ jobs:
           $checks.GetEnumerator() | ForEach-Object { Write-Host ("{0}={1}" -f $_.Key, $(if($_.Value){'PASS'}else{'FAIL'})) }
           if ($checks.Values -contains $false) { throw 'Static safety audit failed.' }
           Write-Host 'STATIC_REBUILD_AUDIT=PASS'
+
+      - name: Parse and audit non-destructive resume script
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'B460M-OC-Builder/Resume-B460M-Sequoia-NO-SS04-USB.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Host; throw 'Resume script parse failed.' }
+          $s = Get-Content $p -Raw
+          $checks = [ordered]@{
+            'Exact USB identity' = ($s.Contains('LITEON I T LCS-128L9S') -and $s.Contains('000000123ADC'))
+            'USB bus guard' = $s.Contains("`$_.BusType -eq 'USB'")
+            'Existing ESP GUID check' = $s.Contains('c12a7328-f81f-11d2-ba4b-00a0c93ec93b')
+            'No clean command' = (-not $s.Contains("'clean'"))
+            'No format command' = (-not $s.Contains('format fs='))
+            'No partition creation' = (-not $s.Contains('create partition'))
+            'EFI SHA256 verification' = $s.Contains('Get-FileHash')
+            'Apple chunklist verification' = $s.Contains('verify_image')
+          }
+          $checks.GetEnumerator() | ForEach-Object { Write-Host ("{0}={1}" -f $_.Key, $(if($_.Value){'PASS'}else{'FAIL'})) }
+          if ($checks.Values -contains $false) { throw 'Resume script safety audit failed.' }
+          Write-Host 'NONDESTRUCTIVE_RESUME_AUDIT=PASS'
