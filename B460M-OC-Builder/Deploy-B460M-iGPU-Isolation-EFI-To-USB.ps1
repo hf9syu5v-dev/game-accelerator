@@ -124,7 +124,7 @@ print("BOOT_ARGS=" + " ".join(a))
                 if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or (Hash $file) -ne $matches[1].ToLowerInvariant()) { throw "USB copy hash mismatch: $rel" }
             }
         }
-        if (-not (Test-Path -LiteralPath (Join-Path $Root 'BaseSystem.dmg')) -or -not (Test-Path -LiteralPath (Join-Path $Root 'BaseSystem.chunklist'))) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Root 'com.apple.recovery.boot\BaseSystem.dmg')) -or -not (Test-Path -LiteralPath (Join-Path $Root 'com.apple.recovery.boot\BaseSystem.chunklist'))) {
             throw 'Recovery files are missing; refusing to report deployment success.'
         }
         Write-Host 'DEPLOYMENT_SUCCESS=PASS' -ForegroundColor Green
