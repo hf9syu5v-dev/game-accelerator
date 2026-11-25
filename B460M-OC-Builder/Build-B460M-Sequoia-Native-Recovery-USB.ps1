@@ -110,14 +110,14 @@ try {
 
     Write-Host 'STEP 4/5: Rebuild USB as GPT + FAT32...'
     $dp = Join-Path $Work 'diskpart.txt'
-    @("select disk $($disk.Number)",'clean','convert gpt',"create partition primary size=$Fat32SizeMB",'format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$TargetLetter",'exit') | Set-Content -LiteralPath $dp -Encoding ASCII
+    @("select disk $($disk.Number)",'clean','convert gpt',"create partition efi size=$Fat32SizeMB",'format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$TargetLetter",'exit') | Set-Content -LiteralPath $dp -Encoding ASCII
     $dpOutput = & diskpart.exe /s $dp 2>&1
     $dpOutput | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0) { Stop-Setup "DISKPART_FAILED_EXIT=$LASTEXITCODE" }
 
     $vol = Get-Volume -DriveLetter $TargetLetter -ErrorAction Stop
     $part = Get-Partition -DriveLetter $TargetLetter -ErrorAction Stop
-    if ($part.DiskNumber -ne $disk.Number -or $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA') { Stop-Setup 'FORMATTED_USB_VERIFICATION_FAILED' }
+    if ($part.DiskNumber -ne $disk.Number -or $part.GptType -ne '{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}' -or $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA') { Stop-Setup ('FORMATTED_USB_VERIFICATION_FAILED; GPT_TYPE=' + $part.GptType) }
 
     Write-Host 'STEP 5/5: Copy EFI and Sequoia Recovery...'
     $usbRoot = $TargetLetter + ':\'
