@@ -32,7 +32,7 @@ jobs:
             'Exact USB serial' = $p.Contains("000000123ADC")
             'USB bus guard' = $p.Contains("`$_.BusType -eq 'USB'")
             'Boot/system guard' = $p.Contains('$d.IsBoot -or $d.IsSystem')
-            'Explicit destructive confirmation' = $p.Contains('REFORMAT LITEON 000000123ADC')
+            'Explicit destructive confirmation' = ($p.Contains("Read-Host 'Enter 43024 to erase and rebuild this USB'") -and $p.Contains("$answer.Trim() -cne '43024'"))
             'DiskPart clean and GPT' = ($p.Contains("'clean'") -and $p.Contains("'convert gpt'"))
             'EFI partition' = $p.Contains('create partition efi size=16000')
             'FAT32 format' = $p.Contains('format fs=fat32 quick label=OC-SEQUOIA')
