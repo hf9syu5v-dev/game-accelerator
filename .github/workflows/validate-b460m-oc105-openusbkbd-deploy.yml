@@ -46,9 +46,9 @@ jobs:
           'USB_IDENTITY_AND_RECOVERY_GUARDS=PASS'
           'NO_PARTITION_OR_FORMAT_OPERATIONS=PASS'
       - name: Exercise ZIP extraction and EFI root detection with fixture
-        shell: powershell
+        shell: bash
         run: |
-          $ErrorActionPreference='Stop'
+          set -euo pipefail
           python - <<'PY'
           import importlib.util, tempfile, zipfile
           from pathlib import Path
