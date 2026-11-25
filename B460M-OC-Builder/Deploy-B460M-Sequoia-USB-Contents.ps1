@@ -127,8 +127,8 @@ m.verify_image(sys.argv[2], sys.argv[3])
     Write-Host 'APPLE_CHUNKLIST_VERIFICATION=PASS' -ForegroundColor Green
 
     $disk2 = Get-Disk -Number $disk.Number -ErrorAction Stop
-    $part2 = Get-Partition -DriveLetter E -ErrorAction Stop
-    $vol2 = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='E:'"
+    $part2 = Get-Partition -DriveLetter F -ErrorAction Stop
+    $vol2 = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='F:'"
     if ($disk2.FriendlyName -ne $ExpectedModel -or $disk2.SerialNumber.Trim() -ne $ExpectedSerial -or $disk2.BusType -ne 'USB' -or $disk2.IsBoot -or $disk2.IsSystem -or $part2.DiskNumber -ne $disk.Number -or ([string]$part2.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or !$vol2 -or $vol2.FileSystem -ne 'FAT32') { Stop-Deploy 'SAFETY_STOP: target identity changed before copy.' }
     foreach ($n in @('EFI','com.apple.recovery.boot','USB-BUILD-REPORT.txt')) { if (Test-Path -LiteralPath (Join-Path $UsbRoot $n)) { Stop-Deploy "SAFETY_STOP: destination appeared: $n" } }
 
