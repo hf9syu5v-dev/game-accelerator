@@ -119,3 +119,13 @@ Run #37 passed every workflow step, including matching OpenCore 1.0.8 `ocvalidat
 See [Artifact-Audit-Run-45586826590.md](Artifact-Audit-Run-45586826590.md) and [Hardware-Initialization-Audit-2026-11-25.md](Hardware-Initialization-Audit-2026-11-25.md).
 
 Run #37 is the latest successful CI-validated staging artifact. It remains **STAGING ONLY — NOT BOOTABLE**; physical USB port mapping and all runtime hardware checks remain outstanding.
+
+## 13. Latest staging build — Run #38
+
+Run 45588972597 completed successfully from commit `50abc68dcde6ca4a1edd3e7f1536d09fc780d66f`. Artifact ID `15010605420`; downloaded ZIP SHA-256 `b2daad387afa25b1d4c1d67705728f1e039bc148b63b28ff355ea51f55402794`.
+
+Run #38 does not change the generated OpenCore configuration. It improves artifact traceability: the staging manifest now hashes **every file under EFI/** rather than only the bootloader, OpenCore binary, drivers and ACPI tables. The artifact was downloaded and independently checked; all 24 manifest file hashes matched the extracted EFI payload, config.plist parsed successfully, and the expected 8 kexts / 3 ACPI tables / 2 UEFI drivers are enabled.
+
+Full record: [Artifact-Audit-Run-45588972597.md](Artifact-Audit-Run-45588972597.md).
+
+Run #38 is the latest successful CI-validated staging artifact. It remains **STAGING ONLY — NOT BOOTABLE** pending physical USB mapping and hardware validation.
