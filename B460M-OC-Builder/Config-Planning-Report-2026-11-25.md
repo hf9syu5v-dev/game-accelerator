@@ -40,6 +40,19 @@ Known platform:
 - No Wi-Fi/Bluetooth card
 - Windows boot drive WD SN720 must remain untouched; macOS target drive is HP EX900 Plus 256 GB NVMe
 
+### BIOS facts now confirmed by user
+- VT-d: Disabled.
+- Above 4G Decoding: Enabled.
+- CFG Lock: no visible BIOS menu item was found by the user; actual MSR 0xE2 lock state has not yet been measured.
+- Resizable BAR: not confirmed; keep ResizeAppleGpuBars = -1 and do not assume firmware ReBAR is enabled.
+
+Consequent Kernel -> Quirks direction:
+- DisableIoMapper = false, because VT-d is disabled in firmware. Do not enable it merely as a generic precaution.
+- AppleXcpmCfgLock = true as the provisional first-boot workaround if CFG Lock cannot be disabled; confirm actual MSR 0xE2 state with OpenCore DEBUG log or ControlMsrE2.efi. If the register is already unlocked, set it false.
+- AppleCpuPmCfgLock = false; this is not the relevant workaround for this Comet Lake CPU generation.
+- XhciPortLimit = false for Sequoia; do not rely on the historical port-limit patch.
+- Do not force Kernel -> Emulate CPUID unless a direct CPUID read or boot log demonstrates it is necessary.
+
 ### ACPI Add candidates
 Enable these four entries, matching the files in EFI/OC/ACPI:
 - SSDT-PLUG-DRTNIA.aml
@@ -77,13 +90,9 @@ The Dortania Comet Lake guidance is the starting point for this 400-series platf
 - SetupVirtualMap = false (ASUS Comet Lake guidance specifically warns against enabling it)
 - SyncRuntimePermissions = true
 
-These are a platform baseline; DEBUG boot logs and firmware behavior still need review.
+Above 4G Decoding is confirmed enabled. Do not add an unnecessary npci=0x2000 boot argument by default. ReBAR remains unconfirmed; ResizeAppleGpuBars stays -1.
 
-### Kernel quirks requiring BIOS confirmation
-- AppleXcpmCfgLock: enable only if CFG Lock cannot be disabled in BIOS; otherwise false.
-- DisableIoMapper: enable only if VT-d remains enabled; otherwise false.
-- XhciPortLimit: false for Sequoia; do not rely on the historical port-limit patch.
-- Do not force Kernel -> Emulate CPUID until the ES CPU's actual CPUID is measured and its macOS compatibility is established.
+These are a platform baseline; DEBUG boot logs and firmware behavior still need review.
 
 ### DeviceProperties / graphics
 Do not inject I225-V properties: the board has Intel I219-V.
@@ -94,14 +103,12 @@ No iGPU framebuffer properties are approved yet. The display is connected to RX 
 ### Audio
 ALC S1200A is the identified codec. Use alcid=3 as the first test candidate because a community EFI for the closely matching ASUS TUF B460M-PLUS Wi-Fi / i5-10400 platform reports layout-id 3. This is evidence for a test, not proof that every board revision and jack configuration behaves identically. Confirm speaker output, microphone input, front-panel detection and sleep/wake audio before treating audio as complete. Do not keep the Sample.plist's unrelated layout-id by accident.
 
-## 4. Required facts before producing the next config candidate
+## 4. Remaining decisions before producing a real config candidate
 
-1. BIOS CFG Lock state (disabled/enabled/not exposed).
-2. BIOS VT-d state.
-3. BIOS Above 4G Decoding and Resizable BAR state (if present).
-4. Direct CPUID read is still desirable as a final confirmation, but Intel's datasheet already maps the reported Comet Lake-S G0 stepping to 0x000A0650; do not spoof this value by default.
-5. Whether Intel UHD iGPU should provide Quick Sync/headless compute, or remain unused while RX 570 drives the display.
-6. Whether user is willing to generate a unique iMac20,1 SMBIOS using GenSMBIOS; serial, MLB, ROM and UUID will not be invented by this project.
+1. Direct CFG Lock state is still desirable but is no longer a blocker: use the provisional AppleXcpmCfgLock workaround for a first-boot candidate, then verify from DEBUG log.
+2. Direct CPUID read is still desirable as a final confirmation, but Intel's datasheet already maps the reported Comet Lake-S G0 stepping to 0x000A0650; do not spoof this value by default.
+3. Whether Intel UHD iGPU should provide Quick Sync/headless compute, or remain unused while RX 570 drives the display.
+4. Whether user is willing to generate a unique iMac20,1 SMBIOS using GenSMBIOS; serial, MLB, ROM and UUID will not be invented by this project.
 
 ## 5. Safety gates before any boot attempt
 
