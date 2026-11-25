@@ -115,10 +115,21 @@ jobs:
           assert m["CFBundleIdentifier"] == "com.dhinakg.USBToolBox.map"
           assert m["OSBundleLibraries"]["com.dhinakg.USBToolBox.kext"] == "1.0.0"
           ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
-          assert len(ports) == 11
+          expected_map = {
+              "HS01": (1, 3), "HS02": (2, 3), "HS03": (3, 3), "HS04": (4, 3),
+              "HS05": (9, 0), "HS06": (10, 0), "HS07": (11, 255),
+              "SS01": (17, 3), "SS02": (18, 3), "SS03": (19, 3), "SS04": (20, 3),
+          }
+          actual_map = {
+              name: (int.from_bytes(item["port"], "little"), item["UsbConnector"])
+              for name, item in ports.items()
+          }
+          assert actual_map == expected_map, f"UTBMap changed: {actual_map}"
+          indices = [index for index, connector in actual_map.values()]
+          assert len(indices) == len(set(indices)), "Duplicate USB port hardware index"
           assert int.from_bytes(m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["port-count"], "little") == 20
           assert len(ports) <= 15, "Apple XHCI port limit exceeded"
-          print("UTBMap plist verified: 11 mapped ports; highest hardware index 20")
+          print("UTBMap verified: exact 11-port HS/SS map, unique hardware indices, port-count 20")
           PY
 
       - name: Verify staged kext metadata and x86_64 executables
