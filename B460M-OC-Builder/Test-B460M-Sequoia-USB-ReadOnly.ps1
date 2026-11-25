@@ -150,7 +150,9 @@ try {
         Invoke-WebRequest -Uri $ocUrl -OutFile $ocZip -UseBasicParsing
     }
     $zipHash = Get-Sha256 $ocZip
+    $expectedZipHash = "3f5f42b85703cf2c08e8dcd9245a52fb4326c9f4ef335c75b49f516cbbe131c6"
     Write-Info "OpenCore archive SHA256" $zipHash
+    if ($zipHash -ne $expectedZipHash) { throw "OpenCore archive SHA256 mismatch. Expected $expectedZipHash; got $zipHash. Delete the TEMP archive and rerun." }
     $extract = Join-Path $env:TEMP ("OpenCore-ocvalidate-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $extract | Out-Null
     try {
