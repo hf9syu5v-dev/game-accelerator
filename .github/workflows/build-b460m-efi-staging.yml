@@ -253,7 +253,9 @@ jobs:
           assert all(x["Enabled"] and (Path("build/EFI/OC/Drivers") / x["Path"]).is_file() for x in c["UEFI"]["Drivers"])
           assert c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"].startswith("-v ")
           # Graphics/network/storage/audio/CPU initialization guardrails from the hardware audit.
-          assert list(c["DeviceProperties"]["Add"]) == ["PciRoot(0x0)/Pci(0x2,0x0)"]
+          assert list(c["DeviceProperties"]["Add"]) == ["PciRoot(0x0)/Pci(0x1F,0x3)", "PciRoot(0x0)/Pci(0x2,0x0)"]
+          hdef = c["DeviceProperties"]["Add"]["PciRoot(0x0)/Pci(0x1F,0x3)"]
+          assert hdef == {"layout-id": bytes.fromhex("01000000")}
           igpu = c["DeviceProperties"]["Add"]["PciRoot(0x0)/Pci(0x2,0x0)"]
           assert igpu == {"AAPL,ig-platform-id": bytes.fromhex("0300C89B")}
           assert c["DeviceProperties"]["Delete"] == {}
