@@ -44,7 +44,7 @@ def safe_extract(z: Path, dest: Path) -> Path:
         a.extractall(root)
     configs=list(root.glob("**/EFI/OC/config.plist"))
     if len(configs)!=1: raise RuntimeError("Expected exactly one EFI/OC/config.plist; found "+str(len(configs)))
-    return configs[0].parents[2]
+    return configs[0].parents[1]
 
 def verify_efi(efi: Path) -> int:
     required=["BOOT/BOOTx64.efi","OC/OpenCore.efi","OC/config.plist","OC/Drivers/OpenRuntime.efi","OC/Drivers/HfsPlus.efi","OC/Drivers/OpenUsbKbDxe.efi"]
