@@ -73,7 +73,8 @@ jobs:
           from pathlib import Path
           root = Path("base/EFI/OC")
           c = plistlib.loads((root/"config.plist").read_bytes())
-          assert c["UEFI"]["Input"]["KeySupport"] is False
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["UEFI"]["Input"]["KeySupportMode"] == "V2"
           assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
           assert all(d["Path"] != "OpenUsbKbDxe.efi" for d in c["UEFI"]["Drivers"])
           assert not (root/"Drivers/OpenUsbKbDxe.efi").exists()
@@ -99,10 +100,7 @@ jobs:
           - Misc Boot -> PollAppleHotKeys = False
           - OpenUsbKbDxe.efi is not loaded and is absent.
 
-          Diagnostic purpose: bypass OpenCore's AppleGenericInput/KeySupport
-          interception and leave keyboard input to the motherboard UEFI firmware's
-          native console input path. This distinguishes a broken/interfering
-          KeySupport interception path from missing/broken firmware input protocols.
+          Diagnostic purpose: test EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL through OpenCore KeySupportMode=V2. The previous Auto and V1 configurations did not restore keyboard input. This isolates the remaining standard UEFI V2 input protocol path.
 
           All other ACPI, kexts, USB map, SMBIOS, boot arguments and RX570 VESA
           isolation settings are retained. This does not claim successful physical
