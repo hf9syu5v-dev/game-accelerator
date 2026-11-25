@@ -310,6 +310,8 @@ jobs:
       - name: Upload final EFI package
         uses: actions/upload-artifact@v4
         with:
-          name: B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-LOCAL-SMBIOS-REQUIRED
-          path: staging/B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-Package.zip
+          name: B460M-PLUS-OpenCore-1.0.5-Sequoia-EFI-iMac20,1-TEST
+          path: |
+            staging/EFI/
+            staging/BUILD-STATUS.txt
           if-no-files-found: error
