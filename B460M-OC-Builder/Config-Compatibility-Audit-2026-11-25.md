@@ -49,6 +49,10 @@ In particular, SetupVirtualMap must remain False on this ASUS Comet Lake platfor
 - No layout ID or alcid boot argument is currently injected. This is intentional: a supported codec layout is not necessarily the correct jack map for this ASUS board.
 - Select and test an ASUS-specific layout after the first successful boot; do not treat generic layout 1 or another B460 board's layout as verified for this motherboard.
 
+## 6A. Firmware-update protection adjustment
+
+The config generator was updated in commit `0f423d59e5a38c08365a5b1c903bda6858dc3213` to set `Misc -> Security -> BlacklistAppleUpdate = True`, matching Dortania's Comet Lake baseline. This is a protective setting to block Apple firmware-update payloads from being applied through macOS. The previously built Run 45572403055 artifact still contains the old False value; it is not silently treated as rebuilt. A fresh workflow run is required before this change appears in a new artifact.
+
 ## 7. Validation already passed
 
 For Run 45572403055:
@@ -78,3 +82,8 @@ For Run 45572403055:
 - AppleALC supported codecs: https://github.com/acidanthera/AppleALC/wiki/Supported-codecs
 
 This is a configuration compatibility review, not a hardware boot test. The artifact remains STAGING ONLY — NOT BOOTABLE.
+
+
+## 9. Artifact freshness note
+
+The latest inspected ZIP is Run 45572403055 (artifact 15003605173). Its config was independently parsed from the downloaded artifact. The generator change above was committed after that build; until a new Actions run is completed and its artifact is audited, use the old ZIP only as an audit reference and do not distribute it as the latest candidate.
