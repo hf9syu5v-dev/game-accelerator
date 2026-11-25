@@ -4,7 +4,8 @@ $Model='LITEON I T LCS-128L9S';$Serial='000000123ADC';$Esp='c12a7328-f81f-11d2-b
 $Artifact=Join-Path $env:USERPROFILE 'Downloads\B460M-NO-SS04-DIAGNOSTIC-ARTIFACT.zip'
 $OCUrl='https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip'
 $OCHash='3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6'
-$Work=Join-Path $env:TEMP ('B460M-Resume-'+[guid]::NewGuid().ToString('N'))`n$RecoveryCache=Join-Path $env:LOCALAPPDATA 'B460M-Sequoia-RecoveryCache'
+$Work=Join-Path $env:TEMP ('B460M-Resume-'+[guid]::NewGuid().ToString('N'))
+$RecoveryCache=Join-Path $env:LOCALAPPDATA 'B460M-Sequoia-RecoveryCache'
 function Fail([string]$s){throw $s}
 function Hash([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 try{
@@ -42,15 +43,20 @@ try{
  if((Hash $oczip) -ne $OCHash.ToLowerInvariant()){Fail 'OpenCore ZIP SHA256 mismatch.'}
  $ocdir=Join-Path $Work 'oc';Expand-Archive -LiteralPath $oczip -DestinationPath $ocdir -Force
  $mr=@(Get-ChildItem $ocdir -Filter macrecovery.py -File -Recurse);if($mr.Count -ne 1){Fail 'macrecovery.py not uniquely found.'}
- $rec=Join-Path $Work 'com.apple.recovery.boot';New-Item -ItemType Directory $rec -Force|Out-Null`nNew-Item -ItemType Directory $RecoveryCache -Force|Out-Null`n$cacheDmg=Join-Path $RecoveryCache 'BaseSystem.dmg';$cacheChunk=Join-Path $RecoveryCache 'BaseSystem.chunklist'
+ $rec=Join-Path $Work 'com.apple.recovery.boot';New-Item -ItemType Directory $rec -Force|Out-Null
+New-Item -ItemType Directory $RecoveryCache -Force|Out-Null
+$cacheDmg=Join-Path $RecoveryCache 'BaseSystem.dmg';$cacheChunk=Join-Path $RecoveryCache 'BaseSystem.chunklist'
  $dmg=Join-Path $rec 'BaseSystem.dmg';$chunk=Join-Path $rec 'BaseSystem.chunklist';$pair=$null
  $roots=@((Join-Path $env:USERPROFILE 'Downloads'),(Join-Path $env:USERPROFILE 'Desktop'),(Join-Path $env:USERPROFILE 'Documents'),'C:\temp',$env:TEMP)
  foreach($sr in ($roots|Select-Object -Unique)){if($sr -and (Test-Path $sr)){ $hit=Get-ChildItem -LiteralPath $sr -Filter BaseSystem.dmg -File -Recurse -ErrorAction SilentlyContinue|Where-Object{Test-Path (Join-Path $_.DirectoryName 'BaseSystem.chunklist') -PathType Leaf}|Select-Object -First 1;if($hit){$pair=$hit.DirectoryName;break}}}
- if((Test-Path $cacheDmg -PathType Leaf) -and (Test-Path $cacheChunk -PathType Leaf)){ $pair=$RecoveryCache }`nif($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'BaseSystem.dmg') $dmg;Copy-Item (Join-Path $pair 'BaseSystem.chunklist') $chunk}else{
+ if((Test-Path $cacheDmg -PathType Leaf) -and (Test-Path $cacheChunk -PathType Leaf)){ $pair=$RecoveryCache }
+if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'BaseSystem.dmg') $dmg;Copy-Item (Join-Path $pair 'BaseSystem.chunklist') $chunk}else{
   Write-Host 'No local Recovery pair found; downloading from Apple (up to 6 attempts)...'
   $ok=$false
   for($i=1;$i -le 6;$i++){Remove-Item $dmg,$chunk -Force -ErrorAction SilentlyContinue;Push-Location $mr[0].DirectoryName;try{& $pyexe @pyargs $mr[0].FullName -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 -o $rec download;$rc=$LASTEXITCODE}finally{Pop-Location};if($rc -eq 0 -and (Test-Path $dmg) -and (Test-Path $chunk) -and (Get-Item $dmg).Length -ge 100MB){$ok=$true;break};if($i -lt 6){Start-Sleep -Seconds (5*$i)}}
-  if(!$ok){Fail 'Apple Recovery download failed; existing USB partition left intact.'}`n  Copy-Item $dmg $cacheDmg -Force;Copy-Item $chunk $cacheChunk -Force;Write-Host ('RECOVERY_CACHE_SAVED: '+$RecoveryCache)`n }
+  if(!$ok){Fail 'Apple Recovery download failed; existing USB partition left intact.'}
+  Copy-Item $dmg $cacheDmg -Force;Copy-Item $chunk $cacheChunk -Force;Write-Host ('RECOVERY_CACHE_SAVED: '+$RecoveryCache)
+ }
  $verify=Join-Path $Work 'verify.py'
  @('import importlib.util, sys','s=sys.argv[1]','spec=importlib.util.spec_from_file_location("macrecovery",s)','m=importlib.util.module_from_spec(spec)','spec.loader.exec_module(m)','m.verify_image(sys.argv[2],sys.argv[3])')|Set-Content $verify -Encoding ASCII
  & $pyexe @pyargs $verify $mr[0].FullName $dmg $chunk;if($LASTEXITCODE -ne 0){Fail 'Apple chunklist verification failed.'}
