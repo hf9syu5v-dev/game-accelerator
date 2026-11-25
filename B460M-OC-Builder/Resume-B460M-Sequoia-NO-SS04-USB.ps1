@@ -6,6 +6,8 @@ $OCUrl='https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenC
 $OCHash='3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6'
 $Work=Join-Path $env:TEMP ('B460M-Resume-'+[guid]::NewGuid().ToString('N'))
 $RecoveryCache=Join-Path $env:LOCALAPPDATA 'B460M-Sequoia-RecoveryCache'
+$BasicData='ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
+$espTemporarilyChanged=$false;$chosenLetter=$null
 function Fail([string]$s){throw $s}
 function Hash([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
 try{
@@ -61,14 +63,17 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  @('import importlib.util, sys','s=sys.argv[1]','spec=importlib.util.spec_from_file_location("macrecovery",s)','m=importlib.util.module_from_spec(spec)','spec.loader.exec_module(m)','m.verify_image(sys.argv[2],sys.argv[3])')|Set-Content $verify -Encoding ASCII
  & $pyexe @pyargs $verify $mr[0].FullName $dmg $chunk;if($LASTEXITCODE -ne 0){Fail 'Apple chunklist verification failed.'}
  Write-Host 'APPLE_RECOVERY_CHUNKLIST_VERIFICATION_OK' -ForegroundColor Green
- Write-Host 'STEP 4: Restore access to the existing ESP (no formatting)...'
+ Write-Host 'STEP 4: Temporarily expose ESP to Windows (no formatting)...'
+ # Windows does not assign drive letters to non-Basic-Data GPT partitions.
+ # Temporarily change only this verified USB partition type; restore ESP after copying.
  $chosenLetter=[string]$part.DriveLetter
  if([string]::IsNullOrWhiteSpace($chosenLetter)){
   $used=@(Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue|ForEach-Object{([string]$_.DeviceID).TrimEnd(':')})
   foreach($candidate in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $candidate){$chosenLetter=$candidate;break}}
   if([string]::IsNullOrWhiteSpace($chosenLetter)){Fail 'No free drive letter available.'}
-  Write-Host "ASSIGNING_EXISTING_ESP_LETTER: $chosenLetter"
-  try{Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -NewDriveLetter $chosenLetter -ErrorAction Stop}catch{Fail ("Set-Partition drive-letter assignment failed: "+$_.Exception.Message)}
+  Write-Host "TEMPORARY_GPT_TYPE_CHANGE: ESP -> Basic Data"
+  try{Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -GptType $BasicData -ErrorAction Stop;$espTemporarilyChanged=$true}catch{Fail ("Could not temporarily change the verified USB partition type: "+$_.Exception.Message)}
+  try{Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -NewDriveLetter $chosenLetter -ErrorAction Stop}catch{Fail ("Could not assign a letter after switching to Basic Data: "+$_.Exception.Message)}
  }
  $root=$chosenLetter+':\';$logical=$null;$partNow=$null
  for($i=1;$i -le 15;$i++){
@@ -78,10 +83,8 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
   $logical=Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='"+$chosenLetter+":'") -ErrorAction SilentlyContinue
   if($logical -and $logical.FileSystem -eq 'FAT32' -and $logical.VolumeName -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}
  }
- if(!$partNow -or $partNow.DiskNumber -ne $d.Number -or [string]$partNow.DriveLetter -ne $chosenLetter -or !$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA' -or !(Test-Path $root)){Fail "Existing ESP not accessible/verified: assigned=$chosenLetter; partition_letter=$($partNow.DriveLetter); fs=$($logical.FileSystem); label=$($logical.VolumeName). No formatting was attempted."}
- $check=Get-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber
- if(([string]$check.GptType).Trim('{}').ToLowerInvariant() -ne $Esp){Fail 'ESP GUID mismatch.'}
- Write-Host "EXISTING_ESP_VERIFIED: $root; DISK=$($d.Number); PARTITION=$($part.PartitionNumber)" -ForegroundColor Green
+ if(!$partNow -or $partNow.DiskNumber -ne $d.Number -or [string]$partNow.DriveLetter -ne $chosenLetter -or !$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA' -or !(Test-Path $root)){Fail "Basic-Data-mounted USB volume not accessible/verified: assigned=$chosenLetter; partition_letter=$($partNow.DriveLetter); fs=$($logical.FileSystem); label=$($logical.VolumeName). No formatting was attempted."}
+ Write-Host "TEMPORARY_BASIC_DATA_VOLUME_VERIFIED: $root" -ForegroundColor Green
  Write-Host 'STEP 5: Copy EFI and Recovery files...'
  $efiroot=Join-Path $root 'EFI';if(Test-Path $efiroot){Remove-Item $efiroot -Recurse -Force};New-Item -ItemType Directory $efiroot -Force|Out-Null
  Get-ChildItem $src -Force|ForEach-Object{Copy-Item $_.FullName -Destination $efiroot -Recurse -Force}
@@ -89,6 +92,22 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  foreach($f in $files){$rel=$f.FullName.Substring($src.Length).TrimStart([char]92);$dest=Join-Path $efiroot $rel;if(!(Test-Path $dest -PathType Leaf) -or (Hash $dest) -ne (Hash $f.FullName)){Fail "EFI SHA256 mismatch: $rel"}}
  foreach($n in @('BaseSystem.dmg','BaseSystem.chunklist')){$a=Join-Path $rec $n;$b=Join-Path $recDest $n;if(!(Test-Path $b -PathType Leaf) -or (Hash $a) -ne (Hash $b)){Fail "Recovery SHA256 mismatch: $n"}}
  @('B460M Sequoia NO-SS04 USB resume',("DISK="+$d.Number),("SERIAL="+$Serial),'GPT=YES','ESP=YES','FAT32=YES',("EFI_FILES="+$files.Count),'HS04_SS04=ABSENT','APPLE_RECOVERY_CHUNKLIST=VERIFIED','SHA256_COPY=PASS','NO_CLEAN_NO_FORMAT=YES')|Set-Content (Join-Path $root 'USB-BUILD-REPORT.txt') -Encoding ASCII
+ # Remove the temporary drive letter and restore the required ESP type before boot.
+ Remove-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -AccessPath $root -ErrorAction Stop
+ Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -GptType $Esp -ErrorAction Stop
+ $espTemporarilyChanged=$false
+ $finalPart=Get-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -ErrorAction Stop
+ if(([string]$finalPart.GptType).Trim('{}').ToLowerInvariant() -ne $Esp -or $finalPart.DriveLetter){Fail 'Final ESP restoration check failed.'}
+ Write-Host 'FINAL_PARTITION_TYPE=EFI_SYSTEM_PARTITION; DRIVE_LETTER=REMOVED' -ForegroundColor Green
  Write-Host 'USB_RESUME_SUCCESS' -ForegroundColor Green;Write-Host "USB_ROOT=$root";Write-Host "EFI_FILES_VERIFIED=$($files.Count)";Write-Host 'APPLE_RECOVERY=VERIFIED';Write-Host 'COPY_SHA256=PASS';Write-Host 'NO_CLEAN_NO_FORMAT=YES'
 }catch{Write-Host ("ERROR: "+$_.Exception.Message) -ForegroundColor Red;exit 1}
-finally{if(Test-Path $Work){Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue}}
+finally{
+ if($espTemporarilyChanged){
+  try{
+   if($chosenLetter){Remove-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -AccessPath ($chosenLetter+':\') -ErrorAction SilentlyContinue}
+   Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -GptType $Esp -ErrorAction Stop
+   Write-Host 'SAFETY_RESTORE: ESP type restored after interrupted copy.' -ForegroundColor Yellow
+  }catch{Write-Host ("CRITICAL: Could not restore ESP type automatically: "+$_.Exception.Message) -ForegroundColor Red}
+ }
+ if(Test-Path $Work){Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue}
+}
