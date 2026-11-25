@@ -84,6 +84,8 @@ if ($LASTEXITCODE -ne 0 -or (($version -join ' ') -notmatch '^Python 3\.')) {
     throw "PYTHON_VALIDATION_FAILED: $($version -join ' ')"
 }
 Write-Host ("PYTHON_READY: " + ($version -join ' ')) -ForegroundColor Green
+$pythonDir = Split-Path -Parent $python.Exe
+if ($pythonDir -and (($env:PATH -split ';') -notcontains $pythonDir)) { $env:PATH = $pythonDir + ';' + $env:PATH }
 
 Write-Host ''
 Write-Host 'STEP 4/4 - Download and launch the USB builder' -ForegroundColor Cyan
