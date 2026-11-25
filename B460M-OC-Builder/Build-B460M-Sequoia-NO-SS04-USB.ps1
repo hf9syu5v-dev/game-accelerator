@@ -10,6 +10,17 @@ $BasicData='ebd0a0a2-b9e5-4433-87c0-68b6b72699c7'
 $espTemporarilyChanged=$false;$chosenLetter=$null;$resumeExisting=$false;$resumePartitionNumber=$null
 function Fail([string]$s){throw $s}
 function Hash([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+function Set-EspPartitionType([int]$diskNumber,[int]$partitionNumber){
+ $scriptPath=Join-Path $Work 'set-esp-type.txt'
+ @("select disk $diskNumber","select partition $partitionNumber","set id=$Esp override",'exit')|Set-Content -LiteralPath $scriptPath -Encoding ASCII
+ $out=& diskpart.exe /s $scriptPath 2>&1
+ $out|ForEach-Object{Write-Host ([string]$_)}
+ if($LASTEXITCODE -ne 0){Fail "DiskPart ESP type conversion failed with exit code $LASTEXITCODE."}
+ if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
+ Start-Sleep -Seconds 2
+ $check=Get-Partition -DiskNumber $diskNumber -PartitionNumber $partitionNumber -ErrorAction Stop
+ if(([string]$check.GptType).Trim('{}').ToLowerInvariant() -ne $Esp){Fail "DiskPart returned success but ESP GUID verification failed: $($check.GptType)"}
+}
 try{
  Write-Host '=== BUILD SEQUOIA USB: VERIFIED LITEON ONLY ===' -ForegroundColor Cyan
  if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){Fail 'Requires Windows PowerShell 5.1.'}
@@ -118,7 +129,7 @@ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'B
  @('B460M Sequoia NO-SS04 USB build',("DISK="+$d.Number),("SERIAL="+$Serial),'GPT=YES','FAT32=YES','ESP_TYPE=APPLIED_AFTER_COPY_VERIFICATION',("EFI_FILES="+$files.Count),'HS04_SS04=ABSENT','APPLE_RECOVERY_CHUNKLIST=VERIFIED','SHA256_COPY=PASS')|Set-Content (Join-Path $root 'USB-BUILD-REPORT.txt') -Encoding ASCII
  # Remove the temporary drive letter and restore the required ESP type before boot.
  Remove-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -AccessPath $root -ErrorAction Stop
- Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -GptType $Esp -ErrorAction Stop
+ Set-EspPartitionType -diskNumber $d.Number -partitionNumber $part.PartitionNumber
  $espTemporarilyChanged=$false
  $finalPart=Get-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -ErrorAction Stop
  if(([string]$finalPart.GptType).Trim('{}').ToLowerInvariant() -ne $Esp -or $finalPart.DriveLetter){Fail 'Final ESP restoration check failed.'}
@@ -129,7 +140,7 @@ finally{
  if($espTemporarilyChanged){
   try{
    if($chosenLetter){Remove-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -AccessPath ($chosenLetter+':\') -ErrorAction SilentlyContinue}
-   Set-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber -GptType $Esp -ErrorAction Stop
+   Set-EspPartitionType -diskNumber $d.Number -partitionNumber $part.PartitionNumber
    Write-Host 'SAFETY_RESTORE: ESP type restored after interrupted copy.' -ForegroundColor Yellow
   }catch{Write-Host ("CRITICAL: Could not restore ESP type automatically: "+$_.Exception.Message) -ForegroundColor Red}
  }
