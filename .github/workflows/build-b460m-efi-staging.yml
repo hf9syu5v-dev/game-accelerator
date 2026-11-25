@@ -1,4 +1,4 @@
-name: Build B460M OpenCore staging EFI
+name: Build B460M OpenCore USB boot-test EFI
 
 on:
   workflow_dispatch:
@@ -272,27 +272,48 @@ jobs:
             echo "- ACPI: PLUG, EC-USBX, AWAC; USBToolBox handles RHUB removal"
             echo "- Drivers: OpenRuntime.efi and HfsPlus.efi"
             echo "- Config: hardware-specific config.plist candidate generated and checked with matching ocvalidate"
-            echo "- Status: STAGING ONLY; NOT BOOTABLE"
+            echo "- Status: COMPLETE EFI BOOT-TEST CANDIDATE; NOT HARDWARE-VERIFIED"
             echo
             echo "The config.plist includes the user's requested TEMPORARY TEST SMBIOS identity for initial bring-up only. Replace it locally with a fresh matching GenSMBIOS set after testing."
-            echo "The supplied UTBMap is staged but physical port-by-port behavior still requires validation. No installer, disk image, or physical EFI write is included."
+            echo "This package contains a complete EFI folder intended for a removable-USB OpenCore picker/boot test. It does not contain a macOS installer."
+            echo "The supplied UTBMap is structurally verified but physical port correspondence, macOS boot, and device functionality remain unverified."
+            echo "Do not select an internal-disk installer or perform installation/partition/format operations. No internal disk is modified by this build."
             echo
             echo "## SHA-256"
             find build/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
           } > build/BUILD-MANIFEST.md
-          cat > build/DO-NOT-BOOT.txt <<'EOF'
-          This is an incomplete staging EFI, not a bootable OpenCore configuration.
-          A hardware-specific config.plist candidate is included, but it is not approved
-          for booting. The supplied UTBMap is staged; physical port-by-port behavior
-          and real-hardware validation are still outstanding.
-          Do not use this artifact to boot or install macOS. No disk image or physical EFI write is included.
+          cat > build/USB-BOOT-TEST-README.txt <<'EOF'
+          B460M-PLUS OpenCore 1.0.8 DEBUG — COMPLETE EFI BOOT-TEST CANDIDATE
+
+          EFI/ is a complete OpenCore EFI folder: BOOTx64.efi, OpenCore.efi,
+          config.plist, ACPI tables, kexts, and UEFI drivers are included.
+
+          CI checks: matching OpenCore 1.0.8 ocvalidate, required file presence,
+          kext bundle metadata and x86_64 binaries, ACPI AML disassembly,
+          exact UTBMap structure, config cross-file assertions, and SHA-256 manifest.
+
+          NOT YET HARDWARE-VERIFIED:
+          - UTBMap physical socket mapping and USB 2/3 companion behavior
+          - OpenCore picker and macOS boot on the target motherboard
+          - RX 570 acceleration, UHD 630, Ethernet, NVMe, audio, sleep/wake
+
+          Safe scope for initial test: boot from a separate removable USB and
+          confirm that OpenCore's picker appears. Do not select an installer,
+          format/partition disks, or install macOS. The Windows WD SN720 and
+          macOS target HP EX900 Plus internal disks must remain untouched.
+
+          SMBIOS values are the user's explicitly approved temporary test set.
+          Replace locally after initial bring-up if desired.
           EOF
           test -s build/EFI/OC/config.plist
+          test -s build/EFI/BOOT/BOOTx64.efi
+          test -s build/EFI/OC/OpenCore.efi
+          test -s build/USB-BOOT-TEST-README.txt
 
       - name: Upload staging artifact
         uses: actions/upload-artifact@v4
         with:
-          name: B460M-OpenCore-1.0.8-DEBUG-STAGING-NOT-BOOTABLE
+          name: B460M-OpenCore-1.0.8-DEBUG-USB-BOOT-TEST-CANDIDATE
           path: build/
           if-no-files-found: error
           retention-days: 14
