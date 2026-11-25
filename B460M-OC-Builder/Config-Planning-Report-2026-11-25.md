@@ -33,7 +33,7 @@ Known platform:
 - ASUS TUF GAMING B460M-PLUS, BIOS 1601
 - Intel Core i5-10500ES, 6 cores / 12 threads
 - CPU-Z family/model/stepping data previously reported as Family 6, Model 5, Extended Model A5, Stepping 0, Revision G0
-- Candidate CPUID 0x000A0650 is an inference, not a direct CPUID measurement
+- Intel's 10th Gen Core datasheet maps Comet Lake-S S6/S4/S2 stepping G0 to CPUID 0x000A0650; this matches the CPU-Z Revision G0 and 6-core/12-thread profile reported for this CPU. Treat 0x000A0650 as a strongly supported identification, but do not add a Kernel -> Emulate override unless a direct CPUID read or boot log demonstrates it is necessary.
 - XFX Radeon RX 570 4 GB (Polaris), DisplayPort-connected
 - Intel UHD iGPU is enabled in BIOS; DVMT pre-allocation reported as 512 MB
 - Intel I219-V Ethernet; Realtek ALC S1200A audio
@@ -99,7 +99,7 @@ ALC S1200A is the identified codec. Use alcid=3 as the first test candidate beca
 1. BIOS CFG Lock state (disabled/enabled/not exposed).
 2. BIOS VT-d state.
 3. BIOS Above 4G Decoding and Resizable BAR state (if present).
-4. Actual CPUID from a direct CPUID utility, not a value inferred from CPU-Z family/model labels.
+4. Direct CPUID read is still desirable as a final confirmation, but Intel's datasheet already maps the reported Comet Lake-S G0 stepping to 0x000A0650; do not spoof this value by default.
 5. Whether Intel UHD iGPU should provide Quick Sync/headless compute, or remain unused while RX 570 drives the display.
 6. Whether user is willing to generate a unique iMac20,1 SMBIOS using GenSMBIOS; serial, MLB, ROM and UUID will not be invented by this project.
 
@@ -114,5 +114,6 @@ ALC S1200A is the identified codec. Use alcid=3 as the first test candidate beca
 
 ## References
 
+- Intel 10th Gen Core processor datasheet, CPUID table (Comet Lake-S S6/S4/S2 G0 = A0650): https://cdrdv2-public.intel.com/615211/615211-008.pdf
 - Dortania Desktop Comet Lake configuration guide: https://dortania.github.io/OpenCore-Install-Guide/config.plist/comet-lake.html
 - Dortania config.plist setup and file consistency guidance: https://dortania.github.io/OpenCore-Install-Guide/config.plist/
