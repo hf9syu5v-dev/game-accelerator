@@ -93,3 +93,12 @@ The display is connected to the RX 570 DisplayPort. Keep the discrete card as th
 ## 9. Current boundary and implementation status
 
 The repository now contains a CI-generated OpenCore 1.0.8 DEBUG staging candidate (Run #28) with a generated config.plist, the temporary test SMBIOS values approved by the user, the integrated supplied UTBMap, three selected ACPI tables and two UEFI drivers. Run #28 passed matching ocvalidate and expanded cross-file assertions. It remains explicitly NOT BOOTABLE: physical USB behavior, target-machine boot, CPU identity/power management, GPU acceleration, audio layout, Ethernet, NVMe and sleep/wake are not yet hardware-validated. The exact ES CPU CPUID decision remains evidence-driven; do not add speculative spoofing.
+
+
+## 10. Deep-review update — ALC S1200A layout selection (2026-11-25)
+
+A new exact-model reference was inspected: `Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH`, which targets the non-Wi-Fi ASUS TUF GAMING B460M-PLUS and records Realtek ALCS1200A. Its EFI config uses HDEF path `PciRoot(0x0)/Pci(0x1F,0x3)` with `layout-id=1`; its audio directory includes an ALCS1200A codec dump and jack notes. This is stronger board-specific evidence than the earlier Wi-Fi-only layout-3 reference.
+
+The reviewed generator now injects `layout-id` as Data `01000000` at HDEF, while retaining the UHD 630 headless property. Layout 1 is the first-test candidate, not a guarantee: verify rear line-out, front headphone, rear/front microphones, line-in, jack detection and sleep/wake on this actual machine.
+
+Reference: https://github.com/Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH
