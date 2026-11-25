@@ -72,3 +72,5 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
           python 'B460M-OC-Builder/Deploy-B460M-Native-Firmware-Keyboard-Diagnostic.py' --validate-artifact $zip
           if ($LASTEXITCODE -ne 0) { throw 'Pinned EFI artifact validation failed.' }
+
+# Validation workflow installed; subsequent edits trigger CI.
