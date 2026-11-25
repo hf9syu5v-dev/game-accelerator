@@ -236,6 +236,7 @@ jobs:
           d=c["Misc"]["Debug"]
           d["AppleDebug"]=True; d["ApplePanic"]=False; d["DisableWatchdog"]=True
           d["DisplayLevel"]=2151688018; d["Target"]=65; d["SysReport"]=False
+          configs[0].write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
           out=Path("debug-output/EFI"); shutil.copytree(efi,out)
           print("DEBUG_INPUT_PROFILE=Auto; AppleEvent=Auto; Mirroring=On; log-to-file")
           PY
