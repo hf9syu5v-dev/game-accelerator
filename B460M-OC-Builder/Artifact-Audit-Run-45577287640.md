@@ -82,7 +82,7 @@ The user ran the read-only PowerShell helper on the target Windows installation.
 Interpretation:
 - The 6-core/12-thread topology matches the planned Comet Lake-S configuration.
 - For this 16-hex-digit Intel WMI ProcessorId representation, the trailing 8 digits `000A0650` are the CPUID signature candidate. The leading `BFEBFBFF` must **not** be interpreted as CPUID Leaf 1 EAX.
-- Candidate signature `0x000A0650` decodes to Family 6, Model 0xA06 (extended model A, base model 6), Stepping 0, consistent with the previously observed G0/Comet Lake-S identification.
+- Candidate signature `0x000A0650` decodes to Family 6, Model 0xA5 (extended model A, base model 5), Stepping 0, consistent with the previously observed G0/Comet Lake-S identification.
 - WMI data is firmware/OS-reported and is not an independent direct CPUID instruction capture. The generic CPU name and blank WMI Family/Stepping/Revision fields do not establish a retail SKU; keep the exact ES identity provisional until direct CPUID evidence is collected.
 
 The initial helper version incorrectly extracted the first 8 digits. This has been corrected: [Read-B460M-CPU-Info.ps1](Read-B460M-CPU-Info.ps1) now extracts the final 8 digits and labels them as a WMI-derived candidate only.
