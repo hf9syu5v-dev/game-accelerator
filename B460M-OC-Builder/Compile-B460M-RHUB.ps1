@@ -52,7 +52,7 @@ try {
         Remove-Item -LiteralPath $OutputPath -Force
     }
 
-    & $IaslPath -ve -tc $DslPath
+    & $IaslPath -tc $DslPath
     if ($LASTEXITCODE -ne 0) {
         throw "iASL 编译失败，退出代码：$LASTEXITCODE"
     }
