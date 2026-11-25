@@ -48,7 +48,7 @@ jobs:
           foreach ($required in @('000000123ADC','LITEON I T LCS-128L9S','128035676160','Get-Partition','Get-Disk','IsBoot','IsSystem','relative_to','sha256','EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC','EFI-PREVIOUS-OPENUSBKBD-UNSUPPORTED','BaseSystem.dmg','BaseSystem.chunklist','7116f1de9ddd6a2a1cc05ef4dd8ff84c99a918c3ce51f74a05ce724680a65e10')) {
             if (!$source.Contains($required)) { throw "Missing safety/validation requirement: $required" }
           }
-          if ($source.Contains('PENDING_BUILD_SHA256')) { throw 'Artifact SHA256 pin is incomplete.' }
+          if ($source -match 'PENDING_[A-Z_]+') { throw 'Artifact SHA256 pin is incomplete.' }
           if (!$launcher.Contains('RunAsAdministrator') -or !$launcher.Contains('LASTEXITCODE')) { throw 'PowerShell launcher privilege/exit checks missing.' }
           if (!$launcher.Contains('PyManager\\python.exe')) { throw 'Previously verified PyManager Python path is not searched.' }
           'PYTHON_SYNTAX=PASS'
