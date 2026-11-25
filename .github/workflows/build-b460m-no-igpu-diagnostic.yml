@@ -1,4 +1,4 @@
-name: Build B460M no-iGPU isolation diagnostic EFI
+name: Build B460M no-iGPU isolation diagnostic EFI (macOS validator runner)
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   diagnostic-efi:
-    runs-on: ubuntu-latest
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - name: Check out repository
