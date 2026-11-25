@@ -14,6 +14,7 @@ $BackupName = "EFI_PRE_NO_SS04_BACKUP"
 $OldRenamed = $false
 try {
     Write-Host "=== B460M NO-SS04 EFI deployment ===" -ForegroundColor Cyan
+    if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw "This deployment script requires Windows PowerShell 5.1." }
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw "Please rerun PowerShell as Administrator." }
