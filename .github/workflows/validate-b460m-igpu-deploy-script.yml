@@ -53,9 +53,21 @@ jobs:
           Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
           $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "SHA256 mismatch. Expected $expected; got $actual" }
+          $zipCandidates = @([IO.FileInfo]$zip)
+          if ($zipCandidates.Count -ne 1 -or $zipCandidates[0].FullName -ne $zip) { throw 'PowerShell FileInfo candidate conversion failed' }
           $out = Join-Path $env:RUNNER_TEMP 'efi-extracted'
-          Expand-Archive -LiteralPath $zip -DestinationPath $out -Force
-          $efi = Join-Path $out 'EFI'
+          $sourceEfi = $null
+          $idx = 0
+          foreach ($z in $zipCandidates) {
+            $idx++
+            $d = Join-Path $env:RUNNER_TEMP ('artifact-expanded-' + $idx)
+            New-Item -ItemType Directory -Path $d -Force | Out-Null
+            Expand-Archive -LiteralPath $z.FullName -DestinationPath $d -Force
+            $b = @(Get-ChildItem -LiteralPath $d -Filter 'BOOTx64.efi' -File -Recurse | Where-Object { $_.Directory.Name -eq 'BOOT' })
+            if ($b.Count -eq 1) { $sourceEfi = $b[0].Directory.Parent.FullName; break }
+          }
+          if (!$sourceEfi) { throw 'EFI directory discovery logic failed' }
+          $efi = $sourceEfi
           foreach ($rel in @(
             'BOOT\BOOTx64.efi',
             'OC\OpenCore.efi',
