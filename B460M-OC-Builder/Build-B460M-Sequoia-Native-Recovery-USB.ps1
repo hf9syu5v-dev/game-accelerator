@@ -82,8 +82,10 @@ try {
 
     $diskNow = Get-Disk -Number $disk.Number
     if ($diskNow.FriendlyName -ne $DiskModel -or $diskNow.SerialNumber.Trim() -ne $DiskSerial -or $diskNow.BusType -ne 'USB' -or $diskNow.IsBoot -or $diskNow.IsSystem) { Stop-Setup 'SAFETY_STOP: USB identity changed before formatting.' }
-    $letterInUse = Get-Volume -DriveLetter $TargetLetter -ErrorAction SilentlyContinue
-    if ($letterInUse) { Stop-Setup ('SAFETY_STOP: drive letter ' + $TargetLetter + ' is already assigned. No disk changes made.') }
+    $letterPartition = Get-Partition -DriveLetter $TargetLetter -ErrorAction SilentlyContinue
+    if ($letterPartition -and $letterPartition.DiskNumber -ne $disk.Number) {
+        Stop-Setup ('SAFETY_STOP: drive letter ' + $TargetLetter + ' belongs to another disk. No disk changes made.')
+    }
 
     Write-Host ''
     Write-Host ("TARGET DISK: Disk {0} | {1} | Serial {2} | {3:N2} GB" -f $disk.Number,$DiskModel,$DiskSerial,($disk.Size/1GB)) -ForegroundColor Yellow
