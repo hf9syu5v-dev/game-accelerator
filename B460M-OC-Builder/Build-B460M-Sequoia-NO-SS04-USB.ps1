@@ -37,13 +37,23 @@ try{
   # Resume only the exact intermediate layout from the previous run.
   $pnow=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
   $msr=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -and $_.Size -ge 15MB -and $_.Size -le 17MB})
-  $data=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB -and $_.DriveLetter})
+  $data=@($pnow|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $BasicData -and $_.Size -ge 15GB -and $_.Size -le 17GB})
   if($pnow.Count -ne 2 -or $msr.Count -ne 1 -or $data.Count -ne 1){Fail "Safety stop: USB has $($pnow.Count) partitions, not the exact recognized resumable layout. No disk changes made."}
+  $resumePartitionNumber=[int]$data[0].PartitionNumber
   $resumeLetter=[string]$data[0].DriveLetter
+  if([string]::IsNullOrWhiteSpace($resumeLetter)){
+   $used=@(Get-CimInstance Win32_LogicalDisk -ErrorAction SilentlyContinue|ForEach-Object{([string]$_.DeviceID).TrimEnd(':')})
+   foreach($candidate in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $candidate){$resumeLetter=$candidate;break}}
+   if([string]::IsNullOrWhiteSpace($resumeLetter)){Fail 'No free drive letter available to resume the existing USB partition.'}
+   Add-PartitionAccessPath -DiskNumber $d.Number -PartitionNumber $resumePartitionNumber -AccessPath ($resumeLetter+':\\') -ErrorAction Stop
+   if(Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue){Update-HostStorageCache -ErrorAction SilentlyContinue}
+   Start-Sleep -Seconds 3
+  }
   $vol=Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='"+$resumeLetter+":'") -ErrorAction Stop
-  if(!$vol -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA'){Fail ("Safety stop: existing partition "+$resumeLetter+": is not the expected FAT32 volume. No disk changes made.")}
-  $resumeExisting=$true;$resumePartitionNumber=[int]$data[0].PartitionNumber
-  Write-Host ("RESUME_EXISTING_USB_LAYOUT: MSR+FAT32; DRIVE="+$resumeLetter+":") -ForegroundColor Yellow
+  if(!$vol -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA'){Fail ("Safety stop: existing partition "+$resumeLetter+": is not the expected FAT32 volume. No files copied or formatted.")}
+  $chosenLetter=$resumeLetter
+  $resumeExisting=$true
+  Write-Host ("RESUME_EXISTING_USB_LAYOUT: MSR+FAT32; DRIVE="+$resumeLetter+": (existing partition preserved)") -ForegroundColor Yellow
  }
  if(!(Test-Path -LiteralPath $Artifact -PathType Leaf)){Fail "Missing diagnostic artifact: $Artifact"}
  New-Item -ItemType Directory $Work -Force|Out-Null
