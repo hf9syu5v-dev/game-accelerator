@@ -51,7 +51,6 @@ acpi["Add"] = [
     {"Comment": "CPU power management; Dortania PLUG", "Enabled": True, "Path": "SSDT-PLUG-DRTNIA.aml"},
     {"Comment": "Desktop EC and USB power", "Enabled": True, "Path": "SSDT-EC-USBX-DESKTOP.aml"},
     {"Comment": "AWAC/RTC Darwin selection", "Enabled": True, "Path": "SSDT-AWAC.aml"},
-    {"Comment": "B460M-PLUS RHUB disable for Darwin", "Enabled": True, "Path": "SSDT-RHUB-B460M-PLUS.aml"},
 ]
 acpi["Delete"] = []
 acpi["Patch"] = []
@@ -72,6 +71,8 @@ kexts = [
     ("AppleALC.kext", "as.vit9696.AppleALC", "Contents/MacOS/AppleALC"),
     ("IntelMausi.kext", "as.acidanthera.mieze.IntelMausi", "Contents/MacOS/IntelMausi"),
     ("NVMeFix.kext", "org.acidanthera.NVMeFix", "Contents/MacOS/NVMeFix"),
+    ("USBToolBox.kext", "com.dhinakg.USBToolBox.kext", "Contents/MacOS/USBToolBox"),
+    ("UTBMap.kext", "com.dhinakg.USBToolBox.map", None),
 ]
 kernel = need(cfg, "Kernel")
 kernel["Add"] = []
@@ -84,15 +85,18 @@ for folder, bundle_id, executable in kexts:
         actual = plistlib.load(f)
     if actual.get("CFBundleIdentifier") != bundle_id:
         raise SystemExit(f"Bundle ID mismatch for {folder}: {actual.get('CFBundleIdentifier')}")
-    exe = bundle / executable
-    if not exe.is_file():
-        raise SystemExit(f"Missing kext executable: {exe}")
+    if executable is not None:
+        exe = bundle / executable
+        if not exe.is_file():
+            raise SystemExit(f"Missing kext executable: {exe}")
+    elif folder != "UTBMap.kext":
+        raise SystemExit(f"Unexpected codeless kext without an executable: {folder}")
     kernel["Add"].append({
         "Arch": "x86_64",
         "BundlePath": folder,
         "Comment": folder,
         "Enabled": True,
-        "ExecutablePath": executable,
+        "ExecutablePath": executable or "",
         "MaxKernel": "",
         "MinKernel": "",
         "PlistPath": "Contents/Info.plist",
