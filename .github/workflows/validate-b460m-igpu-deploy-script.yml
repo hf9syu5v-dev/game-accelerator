@@ -1,0 +1,46 @@
+name: Validate B460M iGPU EFI deployment script
+
+on:
+  push:
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-iGPU-Isolation-EFI-To-USB.ps1"
+      - ".github/workflows/validate-b460m-igpu-deploy-script.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-51-parse:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse script and enforce disk-safety guardrails
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'B460M-OC-Builder/Deploy-B460M-iGPU-Isolation-EFI-To-USB.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Error
+          }
+          $source = Get-Content -LiteralPath $path -Raw
+          $forbidden = @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all')
+          foreach ($term in $forbidden) {
+            if ($source -match [regex]::Escape($term)) { throw "Forbidden disk operation found: $term" }
+          }
+          foreach ($required in @(
+            '000000123ADC',
+            'LITEON I T LCS-128L9S',
+            '27611d55fde098f6ff5ece81b53620e64baca390e70ad1b3022c3b2b643831e0',
+            'DEPLOY IGPU DIAGNOSTIC EFI',
+            'EFI_PRE_IGPU_ISOLATION_BACKUP',
+            'com.apple.recovery.boot',
+            'INTERNAL_DISKS=NOT_TOUCHED'
+          )) {
+            if ($source -notmatch [regex]::Escape($required)) { throw "Required safety assertion missing: $required" }
+          }
+          'POWERSHELL_PARSE=PASS'
+          'DISK_SAFETY_STATIC_AUDIT=PASS'
