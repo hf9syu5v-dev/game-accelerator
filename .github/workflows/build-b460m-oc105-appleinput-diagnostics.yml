@@ -321,3 +321,23 @@ jobs:
           assert 'current.rename(backup)' in source and 'stage.rename(current)' in source
           print('DISK_SAFETY_STATIC_AUDIT=PASS; ONLY F:\\EFI SWAP PATH PRESENT')
           PY
+
+  validate-debug-powershell-launcher:
+    needs: validate-debug-input-deployer
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell launcher and compile Python core
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'B460M-OC-Builder/Deploy-B460M-OC105-DEBUG-Firmware-Input-Audit.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          if (-not (Select-String -Path $path -Pattern '#requires -RunAsAdministrator' -Quiet)) { throw 'Admin elevation guard missing' }
+          if (-not (Select-String -Path $path -Pattern 'Deploy-B460M-OC105-DEBUG-Firmware-Input-Audit.py' -Quiet)) { throw 'Python core link missing' }
+          python -m py_compile B460M-OC-Builder/Deploy-B460M-OC105-DEBUG-Firmware-Input-Audit.py
+          Write-Output 'POWERSHELL_AST_PARSE=PASS; ADMIN_GUARD=PASS; PYTHON_COMPILE=PASS'
