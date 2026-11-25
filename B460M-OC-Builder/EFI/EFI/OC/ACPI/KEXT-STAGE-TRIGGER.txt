@@ -1,0 +1,1 @@
+CI trigger marker only. No ACPI table is enabled by this file.
