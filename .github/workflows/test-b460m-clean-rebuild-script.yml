@@ -30,7 +30,7 @@ jobs:
           $checks = [ordered]@{
             'Exact USB model' = $p.Contains("LITEON I T LCS-128L9S")
             'Exact USB serial' = $p.Contains("000000123ADC")
-            'USB bus guard' = $p.Contains("$_.BusType -eq 'USB'")
+            'USB bus guard' = $p.Contains("`$_.BusType -eq 'USB'")
             'Boot/system guard' = $p.Contains('$d.IsBoot -or $d.IsSystem')
             'Explicit destructive confirmation' = $p.Contains('REFORMAT LITEON 000000123ADC')
             'DiskPart clean and GPT' = ($p.Contains("'clean'") -and $p.Contains("'convert gpt'"))
