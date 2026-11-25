@@ -25,7 +25,7 @@ RHUB was compiled in the workflow; the resulting AML is 109 bytes and passed ACP
 
 The OpenCore 1.0.8 Sample.plist is a schema starting point, not a usable configuration. Its stock PlatformInfo -> Generic section contains example values (including an iMac19,1 product name and example serial/MLB/ROM/UUID fields). These must never be copied into a real EFI. This project will keep SystemSerialNumber, MLB, ROM, and SystemUUID unset until the user explicitly completes SMBIOS generation.
 
-The stock Sample.plist also contains a sample audio layout-id under DeviceProperties. It must not be blindly retained: the motherboard codec/layout and PCI path must be deliberately selected. The actual board codec is Realtek ALC S1200A; layout selection remains a separate validation task.
+The stock Sample.plist also contains a sample audio layout-id under DeviceProperties. It must not be blindly retained: the motherboard codec/layout and PCI path must be deliberately selected. The actual board codec is Realtek ALC S1200A. A community EFI for the same B460M-PLUS family reports layout-id 3, so alcid=3 is now the best-supported first test candidate; it is not verified on this ES-CPU/RX 570 machine and must be tested with rear/front audio and microphone. Source: https://github.com/nadhirfr/ASUS-TUF-GAMING-B460M-PLUS-WIFI-i5-10400-Hackintosh-Build-Opencore
 
 ## 3. Hardware-specific configuration direction
 
@@ -92,7 +92,7 @@ Do not use -wegnoegpu.
 No iGPU framebuffer properties are approved yet. The display is connected to RX 570; the BIOS iGPU is enabled and DVMT is 512 MB. Decide whether the UHD iGPU is to be used headless for Quick Sync before adding any iGPU device properties. Do not copy generic desktop framebuffer values without confirming the device path and intended role.
 
 ### Audio
-ALC S1200A is the identified codec. The first test layout must be selected from supported layouts for this exact codec; alcid=1 is only a test candidate, not a confirmed board layout. Do not keep the Sample.plist's unrelated layout-id by accident.
+ALC S1200A is the identified codec. Use alcid=3 as the first test candidate because a community EFI for the closely matching ASUS TUF B460M-PLUS Wi-Fi / i5-10400 platform reports layout-id 3. This is evidence for a test, not proof that every board revision and jack configuration behaves identically. Confirm speaker output, microphone input, front-panel detection and sleep/wake audio before treating audio as complete. Do not keep the Sample.plist's unrelated layout-id by accident.
 
 ## 4. Required facts before producing the next config candidate
 
