@@ -91,3 +91,53 @@ jobs:
               print('ACTUAL_ARTIFACT_SAFE_EXTRACT=PASS')
               print('ACTUAL_ARTIFACT_EFI_VALIDATION=PASS; FILES='+str(count))
           PY
+
+      - name: Validate the exact deployable EFI with official OpenCore 1.0.5 tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \\
+            https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip \\
+            -o OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
+          mkdir official-oc105
+          unzip -q OpenCore-1.0.5-DEBUG.zip -d official-oc105
+          validator="$(find official-oc105 -type f -name ocvalidate.linux -print -quit)"
+          official_driver="$(find official-oc105 -type f -path '*/X64/EFI/OC/Drivers/OpenUsbKbDxe.efi' -print -quit)"
+          test -n "$validator" && test -n "$official_driver"
+          chmod +x "$validator"
+          python - <<'PY'
+          import hashlib, importlib.util, plistlib, tempfile
+          from pathlib import Path
+          p=Path('B460M-OC-Builder/Deploy-B460M-OC105-OpenUsbKbDxe-Diagnostic.py')
+          spec=importlib.util.spec_from_file_location('deployer',p)
+          m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          with tempfile.TemporaryDirectory() as td:
+              efi=m.safe_extract(Path('actual-diagnostic-artifact.zip'),Path(td)/'extract')
+              m.verify_efi(efi)
+              oc=efi/'OC'
+              cfg=plistlib.loads((oc/'config.plist').read_bytes())
+              assert cfg['UEFI']['Input']['KeySupport'] is False
+              assert cfg['UEFI'].get('ConnectDrivers') is True
+              drivers=cfg['UEFI']['Drivers']
+              assert sum(d.get('Path')=='OpenUsbKbDxe.efi' and d.get('Enabled') is True for d in drivers)==1
+              assert not any(d.get('Path')=='Ps2KeyboardDxe.efi' and d.get('Enabled') for d in drivers)
+              for d in drivers:
+                  if d.get('Enabled'): assert (oc/'Drivers'/d['Path']).is_file(),d['Path']
+              for a in cfg['ACPI']['Add']:
+                  if a.get('Enabled'): assert (oc/'ACPI'/a['Path']).is_file(),a['Path']
+              for k in cfg['Kernel']['Add']:
+                  if k.get('Enabled'): assert (oc/'Kexts'/k['BundlePath']).exists(),k['BundlePath']
+              h=lambda x: hashlib.sha256(x.read_bytes()).hexdigest()
+              assert h(oc/'Drivers/OpenUsbKbDxe.efi')==h(Path('$official_driver')), 'OpenUsbKbDxe differs from official 1.0.5 release'
+              print('ARTIFACT_CONFIG_AND_ALL_ENABLED_PATHS=PASS')
+              print('OFFICIAL_OPENUSBKBD_BINARY_HASH=PASS')
+          PY
+          config="$(find /tmp -type f -path '*/EFI/OC/config.plist' -print -quit)"
+          # Re-extract into a stable path for the official validator.
+          mkdir -p official-validation
+          unzip -q actual-diagnostic-artifact.zip -d official-validation
+          config="$(find official-validation -type f -path '*/EFI/OC/config.plist' -print -quit)"
+          test -n "$config"
+          "$validator" "$config"
+          echo "EXACT_DEPLOYABLE_ARTIFACT_OFFICIAL_OCVALIDATE_1_0_5=PASS"
