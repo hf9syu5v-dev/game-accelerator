@@ -37,7 +37,9 @@ Write-Info "Physical disk" ("Disk {0}; Model={1}; Serial={2}; Bus={3}; Partition
 $identityOk = ($disk.BusType -eq "USB" -and $serial -eq $ExpectedUsbSerial -and $model -like ($ExpectedUsbModel + "*") -and $disk.IsBoot -eq $false -and $disk.IsSystem -eq $false)
 Write-Check "USB identity / internal-disk protection" $identityOk "Expected USB serial $ExpectedUsbSerial and model prefix '$ExpectedUsbModel'; actual serial '$serial', model '$model', bus '$($disk.BusType)'"
 if (-not $identityOk) { throw "Target identity did not match. Stopping without further action." }
-Write-Check "GPT + FAT32" ($disk.PartitionStyle -eq "GPT" -and $volume.FileSystem -eq "FAT32") ("PartitionStyle={0}; FileSystem={1}" -f $disk.PartitionStyle,$volume.FileSystem)
+$espGuid = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
+$gptType = ([string]$partition.GptType).Trim("{}").ToLowerInvariant()
+Write-Check "GPT EFI System Partition + FAT32" ($disk.PartitionStyle -eq "GPT" -and $gptType -eq $espGuid -and $volume.FileSystem -eq "FAT32") ("PartitionStyle={0}; GptType={1}; FileSystem={2}" -f $disk.PartitionStyle,$partition.GptType,$volume.FileSystem)
 
 $efi = Join-Path $root "EFI"
 $oc = Join-Path $efi "OC"
