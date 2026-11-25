@@ -77,7 +77,7 @@ Decision: include `SSDT-PLUG-DRTNIA.aml`. The 20 ACPI Processor declarations do 
 2. Confirm BIOS version and settings against the target board; static ACPI cannot report all live firmware settings.
 3. Validate the compiled AML files with the exact OpenCore ACPI set and check for duplicate namespace objects.
 4. Perform physical USB port mapping after first successful macOS boot. ACPI object labels are not a substitute for port-by-port testing.
-5. Validate RX 570 (Polaris) acceleration and display outputs after boot; this is outside ACPI static analysis.
+5. Validate ASUS ROG RX 580 (Polaris) acceleration and display outputs after boot; this is outside ACPI static analysis.
 
 ## 5. Official references used
 
