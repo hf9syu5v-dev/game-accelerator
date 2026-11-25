@@ -87,11 +87,11 @@ try {
     $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
     if ($pythonCommand) { $pythonCandidates += [pscustomobject]@{ Path=$pythonCommand.Source; Args=@() } }
     foreach ($candidatePath in @(
-        (Join-Path $env:ProgramFiles 'PyManager\\python.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\\Python\\Python315\\python.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\\Python\\Python314\\python.exe'),
-        (Join-Path $env:LOCALAPPDATA 'Programs\\Python\\Python313\\python.exe'),
-        'C:\\Python315\\python.exe'
+        (Join-Path $env:ProgramFiles 'PyManager\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python315\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python314\python.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python313\python.exe'),
+        'C:\Python315\python.exe'
     )) {
         if ($candidatePath -and (Test-Path -LiteralPath $candidatePath -PathType Leaf)) {
             $pythonCandidates += [pscustomobject]@{ Path=$candidatePath; Args=@() }
@@ -101,7 +101,7 @@ try {
         try {
             $candidateArgs = @($candidate.Args)
             $versionOutput = (& $candidate.Path @candidateArgs --version 2>&1 | Out-String).Trim()
-            if ($LASTEXITCODE -eq 0 -and $versionOutput -match '^Python\\s+3\\.') {
+            if ($LASTEXITCODE -eq 0 -and $versionOutput -match '^Python\s+3\.') {
                 $pyExe = $candidate.Path
                 $pyArgs = @($candidate.Args)
                 Write-Host ("PYTHON_FOUND: {0} ({1})" -f $pyExe,$versionOutput) -ForegroundColor Green
