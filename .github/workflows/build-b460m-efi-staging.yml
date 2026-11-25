@@ -219,12 +219,12 @@ jobs:
           assert c["Misc"]["Security"]["BlacklistAppleUpdate"] is True
           assert c["Misc"]["Boot"]["ShowPicker"] is True
           assert c["Misc"]["Boot"]["Timeout"] == 0
-          assert c["Misc"]["Security"]["ScanPolicy"] == 0x00080703
+          assert c["Misc"]["Security"]["ScanPolicy"] == 0x00200703
           scan_policy = c["Misc"]["Security"]["ScanPolicy"]
-          assert scan_policy & 0x00080000, "USB device bit must be enabled"
-          assert not scan_policy & 0x00200000, "SD device bit must not substitute for USB"
-          assert not scan_policy & 0x00020000, "NVMe device bit must remain disabled"
-          assert not scan_policy & 0x00004000, "SATA device bit must remain disabled"
+          assert scan_policy & 0x00200000, "USB device bit must be enabled"
+          assert not scan_policy & 0x00080000, "NVMe device bit must remain disabled"
+          assert not scan_policy & 0x00010000, "SATA device bit must remain disabled"
+          assert not scan_policy & 0x00020000, "SAS/SASEX device bit must remain disabled"
           assert c["Misc"]["Debug"]["AppleDebug"] is True
           assert c["Misc"]["Debug"]["ApplePanic"] is True
           assert c["Misc"]["Debug"]["DisableWatchDog"] is True
