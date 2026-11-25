@@ -72,10 +72,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          curl --fail --location --retry 3 \\
-            -H "Authorization: Bearer ${GH_TOKEN}" \\
-            -H "Accept: application/vnd.github+json" \\
-            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15068460589/zip \\
+          curl --fail --location --retry 3 \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/15068460589/zip \
             -o actual-diagnostic-artifact.zip
           echo "f2107eb0de11e94a2fd61ed0cee0c63e37943b1150f277777ae21bb6880bcd0f  actual-diagnostic-artifact.zip" | sha256sum --check
           python - <<'PY'
