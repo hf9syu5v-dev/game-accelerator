@@ -2,3 +2,4 @@ CI trigger marker only. No ACPI table is enabled by this file.
 Retry trigger after switching to fixed direct release URLs.
 Configuration-stage trigger after workflow registration.
 Final package verification trigger.
+Final EFI clean-tree validation trigger.
