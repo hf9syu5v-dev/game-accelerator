@@ -87,3 +87,12 @@ This is a configuration compatibility review, not a hardware boot test. The arti
 ## 9. Artifact freshness note
 
 Superseded by the independently inspected Run 45577287640 artifact (ID 15005391442), built from commit `cf11befc0f88ffa6b5b32669db3bfb34731c33f8`. That artifact includes `BlacklistAppleUpdate=True` and passed ZIP integrity, config parsing, kext/ACPI/driver presence checks and the workflow's matching `ocvalidate` step. It remains staging-only and is not approved to boot.
+
+
+## 10. Latest CI verification — Run #31
+
+The latest staging workflow is Run 45585718839, built from commit `2441e21d746090736efa0a8198e5fe1179aeccd9`. It completed successfully and produced artifact ID `15008651678` (SHA-256 `383327c4f8897e6a6b9ce0029fa7cf0ba16982574ddf40383986f659ae01fb51`).
+
+In addition to the Run #28 config and cross-file assertions, Run #31 verifies the exact Bundle ID and CFBundleVersion of all seven binary kexts and checks each executable contains x86_64 using macOS `lipo`. It separately verifies UTBMap's codeless bundle and USBToolBox dependency metadata. All checks passed. The first test attempt (Run #30) exposed an incorrect `lipo` argument order in the new test; the workflow command was corrected and Run #31 passed.
+
+See [Artifact-Audit-Run-45585718839.md](Artifact-Audit-Run-45585718839.md) for the full record. This remains a CI-validated staging candidate, **not a bootable or hardware-tested EFI**.
