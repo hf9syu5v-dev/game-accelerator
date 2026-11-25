@@ -53,16 +53,17 @@ jobs:
             }
             [xml]$cfg = Get-Content -LiteralPath (Join-Path $src 'OC\config.plist') -Raw
             $txt = $cfg.OuterXml
-            if ($txt -notmatch '<key>KeySupport</key><false\s*/>' -or $txt -notmatch 'OpenUsbKbDxe.efi' -or $txt -notmatch '<key>PollAppleHotKeys</key><false\s*/>') { throw 'Keyboard configuration assertions failed.' }
+            if ($txt -notmatch '<key>KeySupport</key>\s*<false\s*/>' -or $txt -notmatch 'OpenUsbKbDxe.efi' -or $txt -notmatch '<key>PollAppleHotKeys</key>\s*<false\s*/>') { throw 'Keyboard configuration assertions failed.' }
             $files = @(Get-ChildItem -LiteralPath $src -File -Recurse)
             $stage = Join-Path $w 'staging'
             New-Item -ItemType Directory -Path $stage | Out-Null
-            Get-ChildItem -LiteralPath $src -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse }
+            $sourceRoot = (Resolve-Path -LiteralPath $src).Path.TrimEnd('\')
+            Get-ChildItem -LiteralPath $src -Force | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $stage -Recurse -Force }
             foreach ($f in $files) {
-              $rel = $f.FullName.Substring($src.Length).TrimStart([char]92)
-              $d = Join-Path $stage $rel
-              if (!(Test-Path -LiteralPath $d -PathType Leaf)) { throw "Staging file missing: $rel" }
-              if ((Get-FileHash $f.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $d -Algorithm SHA256).Hash) { throw "Staging hash mismatch: $rel" }
+              $relative = $f.FullName.Substring($sourceRoot.Length).TrimStart('\')
+              $d = Join-Path $stage $relative
+              if (!(Test-Path -LiteralPath $d -PathType Leaf)) { throw "Staging file missing: $relative (expected $d)" }
+              if ((Get-FileHash $f.FullName -Algorithm SHA256).Hash -ne (Get-FileHash $d -Algorithm SHA256).Hash) { throw "Staging hash mismatch: $relative" }
             }
             "ARTIFACT_SHA256=PASS"
             "EFI_STRUCTURE_AND_KEYBOARD_CONFIG=PASS"
