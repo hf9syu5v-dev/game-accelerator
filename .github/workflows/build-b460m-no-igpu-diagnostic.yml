@@ -1,0 +1,145 @@
+name: Build B460M no-iGPU isolation diagnostic EFI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-b460m-no-igpu-diagnostic.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnostic-efi:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download the exact tested no-SS04 EFI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 45619808950 \
+            --repo "${GITHUB_REPOSITORY}" \
+            --name "B460M-OpenCore-1.0.8-DEBUG-USB-NO-SS04-DIAGNOSTIC" \
+            --dir base
+          test -s base/EFI/OC/config.plist
+          test -s base/EFI/OC/Kexts/UTBMap.kext/Contents/Info.plist
+          test -s base/EFI/BOOT/BOOTx64.efi
+          cp -a base build
+
+      - name: Add only the iGPU-isolation boot argument
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          p = Path("build/EFI/OC/config.plist")
+          c = plistlib.loads(p.read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          nvram = c["NVRAM"]["Add"][guid]
+          old = nvram["boot-args"]
+          assert isinstance(old, str)
+          assert "-wegnoigpu" not in old
+          assert "-wegnoegpu" not in old
+          assert old.startswith("-v ")
+          nvram["boot-args"] = old + " -wegnoigpu"
+          p.write_bytes(plistlib.dumps(c, fmt=plistlib.FMT_XML, sort_keys=True))
+          print("BOOT_ARGS_BEFORE:", old)
+          print("BOOT_ARGS_AFTER: ", nvram["boot-args"])
+          print("Only change: -wegnoigpu (disable UHD 630 via WhateverGreen; retain RX 570)")
+          PY
+
+      - name: Validate with matching OpenCore 1.0.8 ocvalidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | shasum -a 256 --check -
+          mkdir -p /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          validator="$(find /tmp/oc -type f -name ocvalidate -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" build/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          root = Path("build/EFI/OC")
+          c = plistlib.loads((root / "config.plist").read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          args = c["NVRAM"]["Add"][guid]["boot-args"]
+          assert "-wegnoigpu" in args.split()
+          assert "-wegnoegpu" not in args.split()
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          assert c["Misc"]["Security"]["ScanPolicy"] == 0x00200703
+          assert c["Misc"]["Boot"]["Timeout"] == 0
+          m = plistlib.loads((root / "Kexts/UTBMap.kext/Contents/Info.plist").read_bytes())
+          ports = m["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert len(ports) == 9 and "HS04" not in ports and "SS04" not in ports
+          assert all((root / "Kexts" / x["BundlePath"]).exists() for x in c["Kernel"]["Add"])
+          assert all((root / "ACPI" / x["Path"]).exists() for x in c["ACPI"]["Add"])
+          assert all((root / "Drivers" / x["Path"]).exists() for x in c["UEFI"]["Drivers"])
+          print("PASS: OC config, all referenced files, no-SS04 map, USB-only ScanPolicy")
+          print("PASS: -wegnoigpu present; RX 570 remains enabled; no -wegnoegpu")
+          PY
+
+      - name: Write diagnostic notes and package EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > build/IGPU-ISOLATION-README.txt <<'EOF'
+          B460M-PLUS iGPU ISOLATION DIAGNOSTIC EFI
+
+          Base: exact previously tested OpenCore 1.0.8 DEBUG no-SS04 EFI.
+          Change from base: adds only -wegnoigpu to NVRAM boot-args.
+
+          Purpose:
+          - Temporarily disable UHD 630 through WhateverGreen.
+          - Keep RX 570 enabled as the display GPU.
+          - Retain the existing no-SS04 USB map and USBToolBox RHUB handling.
+          - Retain all existing ACPI, kexts, drivers, SMBIOS test values,
+            ScanPolicy, and all other OpenCore settings.
+
+          This is an isolation test, not a claimed fix. If the machine still
+          hard-freezes at the same point, the UHD 630 path becomes less likely.
+          If the display output is connected to the RX 570, it should remain
+          the active display path. Do not use this EFI if the monitor is
+          connected only to the motherboard video outputs.
+
+          No internal disk is modified. Do not install or partition anything.
+          EOF
+          {
+            echo "# B460M iGPU isolation diagnostic EFI"
+            echo "- Base artifact: run 45619808950 no-SS04 diagnostic EFI"
+            echo "- Single config change: add -wegnoigpu"
+            echo "- UHD 630 disabled for isolation; RX 570 retained"
+            echo "- Existing HS04/SS04 removal retained"
+            echo "- OpenCore 1.0.8 DEBUG; matching ocvalidate passed"
+            echo
+            find build/EFI -type f -print0 | sort -z | xargs -0 shasum -a 256
+          } > build/BUILD-MANIFEST.md
+          cd build
+          zip -qr ../B460M-iGPU-Isolation-Diagnostic-EFI.zip EFI BUILD-MANIFEST.md IGPU-ISOLATION-README.txt
+          cd ..
+          unzip -t B460M-iGPU-Isolation-Diagnostic-EFI.zip
+          shasum -a 256 B460M-iGPU-Isolation-Diagnostic-EFI.zip
+
+      - name: Upload iGPU isolation diagnostic EFI
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-OpenCore-1.0.8-DEBUG-NO-IGPU-DIAGNOSTIC
+          path: |
+            B460M-iGPU-Isolation-Diagnostic-EFI.zip
+            build/
+          if-no-files-found: error
+          retention-days: 14
