@@ -243,8 +243,8 @@ jobs:
           for forbidden in ("agdpmod=pikera", "-wegnoegpu", "alcid=", "cpus=1", "nvmefaspm"):
               assert forbidden not in boot_args, f"Unjustified boot argument present: {forbidden}"
           assert "NVMeFix.kext" in [x["BundlePath"] for x in c["Kernel"]["Add"]]
-          assert c["Kernel"]["Emulate"]["Cpuid1Data"] == bytes(16)
-          assert c["Kernel"]["Emulate"]["Cpuid1Mask"] == bytes(16)
+          assert c["Kernel"]["Emulate"]["Cpuid1Data"] == b""
+          assert c["Kernel"]["Emulate"]["Cpuid1Mask"] == b""
           print("Hardware guardrails passed: RX 570 remains enabled; UHD 630 headless only; no speculative audio/ASPM/CPU spoof")
           print(f"config.plist parsed and cross-checked against staged files: {p.stat().st_size} bytes")
           PY
