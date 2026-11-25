@@ -50,6 +50,37 @@ jobs:
           test -n "$validator"
           chmod +x "$validator"
           echo "OCVALIDATE=$validator" >> "$GITHUB_ENV"
+      - name: Compare deployed boot chain binaries with official OpenCore 1.0.5
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          baseline_configs=list(Path("baseline").glob("**/OC/config.plist"))
+          assert len(baseline_configs)==1,baseline_configs
+          oc=baseline_configs[0].parent
+          efi=oc.parent
+          checks={
+            "BOOT/BOOTx64.efi": "BOOTx64.efi",
+            "OC/OpenCore.efi": "OpenCore.efi",
+            "OC/Drivers/OpenRuntime.efi": "OpenRuntime.efi",
+            "OC/Drivers/HfsPlus.efi": "HfsPlus.efi",
+          }
+          official_root=Path("official")
+          for deployed_rel, name in checks.items():
+              deployed=efi/deployed_rel
+              candidates=list(official_root.rglob(name))
+              assert deployed.is_file(),f"DEPLOYED_MISSING: {deployed_rel}"
+              assert len(candidates)==1,(name,candidates)
+              official=candidates[0]
+              def sha(p): return hashlib.sha256(p.read_bytes()).hexdigest()
+              a,b=sha(deployed),sha(official)
+              print(f"{deployed_rel}: deployed={a} official={b}")
+              if a!=b:
+                  raise SystemExit(f"BINARY_VERSION_MISMATCH: {deployed_rel}")
+          print("BOOT_CHAIN_BINARY_MATCH=PASS (4/4)")
+          PY
       - name: Apply isolated AppleInput variables
         env:
           APPLE_EVENT: ${{ matrix.profile.apple_event }}
