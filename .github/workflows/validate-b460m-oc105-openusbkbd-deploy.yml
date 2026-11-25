@@ -101,7 +101,7 @@ jobs:
             -o OpenCore-1.0.5-DEBUG.zip
           echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
           mkdir official-oc105
-          unzip -q OpenCore-1.0.5-DEBUG.zip -d official-oc105
+          unzip -oq OpenCore-1.0.5-DEBUG.zip -d official-oc105
           validator="$(find official-oc105 -type f -name ocvalidate.linux -print -quit)"
           official_driver="$(find official-oc105 -type f -path '*/X64/EFI/OC/Drivers/OpenUsbKbDxe.efi' -print -quit)"
           test -n "$validator" && test -n "$official_driver"
@@ -136,7 +136,7 @@ jobs:
           PY
           # Re-extract into a stable path for the official validator.
           mkdir -p official-validation
-          unzip -q actual-diagnostic-artifact.zip -d official-validation
+          unzip -oq actual-diagnostic-artifact.zip -d official-validation
           config="$(find official-validation -type f -path '*/EFI/OC/config.plist' -print -quit)"
           test -n "$config"
           "$validator" "$config"
