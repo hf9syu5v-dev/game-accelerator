@@ -13,4 +13,4 @@ Files:
 
 These are staged candidates, not yet proven boot-tested on this machine. Before enabling them in config.plist, verify the ACPI analysis report and run the matching OpenCore 1.0.8 ocvalidate after config generation.
 
-Important: Dortania's generic prebuilt `SSDT-RHUB.aml` targets `XHC_`, `XHCI` and `XHC1`; this DSDT uses `XHC` (no trailing underscore). The generic prebuilt AML was therefore removed from this staging tree. Use the board-specific DSL source here, not the generic prebuilt AML.
+Important: Dortania's generic prebuilt `SSDT-RHUB.aml` targets `XHC_`, `XHCI` and `XHC1`; this DSDT uses `XHC` (no trailing underscore). The generic prebuilt AML was therefore removed from this staging tree. Use the board-specific DSL source here, not the generic prebuilt AML. Compile it with `B460M-OC-Builder/Compile-B460M-RHUB.ps1` from the repository root (or run the script with `-IaslPath 'C:\\path\\to\\iasl.exe'`).
