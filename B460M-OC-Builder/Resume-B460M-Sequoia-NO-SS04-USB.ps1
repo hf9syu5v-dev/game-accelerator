@@ -1,0 +1,77 @@
+# Resume the already-formatted authorized LITEON USB. NEVER cleans or formats disks.
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+$Model='LITEON I T LCS-128L9S';$Serial='000000123ADC';$Esp='c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
+$Artifact=Join-Path $env:USERPROFILE 'Downloads\B460M-NO-SS04-DIAGNOSTIC-ARTIFACT.zip'
+$OCUrl='https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip'
+$OCHash='3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6'
+$Work=Join-Path $env:TEMP ('B460M-Resume-'+[guid]::NewGuid().ToString('N'))
+function Fail([string]$s){throw $s}
+function Hash([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
+try{
+ Write-Host '=== RESUME EXISTING USB: NO CLEAN / NO FORMAT ===' -ForegroundColor Cyan
+ if($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1){Fail 'Requires Windows PowerShell 5.1.'}
+ $wi=[Security.Principal.WindowsIdentity]::GetCurrent();$wp=New-Object Security.Principal.WindowsPrincipal($wi)
+ if(!$wp.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){Fail 'Run PowerShell as Administrator.'}
+ $ds=@(Get-Disk|Where-Object{$_.FriendlyName -eq $Model -and $_.SerialNumber -and (($_.SerialNumber.Trim() -replace '\s','') -eq $Serial) -and $_.BusType -eq 'USB' -and $_.Size -ge 115GB -and $_.Size -le 125GB})
+ if($ds.Count -ne 1){Fail "Safety stop: expected one matching USB, found $($ds.Count)."}
+ $d=$ds[0];if($d.IsBoot -or $d.IsSystem -or $d.IsReadOnly -or $d.IsOffline){Fail 'Safety stop: target is boot/system/read-only/offline.'}
+ $parts=@(Get-Partition -DiskNumber $d.Number -ErrorAction Stop|Where-Object{([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $Esp -and $_.Size -ge 15GB -and $_.Size -le 17GB})
+ if($parts.Count -ne 1){Fail "Expected one existing 16GB EFI partition on target; found $($parts.Count). No disk changes made."}
+ $part=$parts[0]
+ if(!(Test-Path -LiteralPath $Artifact -PathType Leaf)){Fail "Missing diagnostic artifact: $Artifact"}
+ New-Item -ItemType Directory $Work -Force|Out-Null
+ Add-Type -AssemblyName System.IO.Compression.FileSystem
+ Write-Host 'STEP 1: Validate diagnostic EFI...'
+ $outer=Join-Path $Work 'outer';[IO.Compression.ZipFile]::ExtractToDirectory($Artifact,$outer)
+ $inner=Get-ChildItem $outer -Filter 'B460M-no-SS04-Diagnostic-EFI.zip' -File -Recurse|Select-Object -First 1
+ if(!$inner){Fail 'Nested diagnostic EFI ZIP missing.'}
+ $idir=Join-Path $Work 'inner';[IO.Compression.ZipFile]::ExtractToDirectory($inner.FullName,$idir)
+ $efis=@(Get-ChildItem $idir -Directory -Filter EFI -Recurse);if($efis.Count -ne 1){Fail "EFI directory count=$($efis.Count)"}
+ $src=$efis[0].FullName
+ foreach($r in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Kexts\UTBMap.kext\Contents\Info.plist')){if(!(Test-Path (Join-Path $src $r) -PathType Leaf)){Fail "Missing EFI file: $r"}}
+ $files=@(Get-ChildItem $src -File -Recurse);if($files.Count -lt 20){Fail 'EFI file count suspicious.'}
+ $map=Get-Content (Join-Path $src 'OC\Kexts\UTBMap.kext\Contents\Info.plist') -Raw
+ if($map -match 'key>\s*HS04\s*<' -or $map -match 'key>\s*SS04\s*<'){Fail 'HS04/SS04 unexpectedly present.'}
+ Write-Host "EFI_SOURCE_OK; FILES=$($files.Count); HS04_SS04=ABSENT" -ForegroundColor Green
+ Write-Host 'STEP 2: Find Python 3...'
+ $pyexe=$null;$pyargs=@();$cmd=Get-Command py.exe -ErrorAction SilentlyContinue
+ if($cmd){$pyexe=$cmd.Source;$pyargs=@('-3')}else{$cmd=Get-Command python.exe -ErrorAction SilentlyContinue;if(!$cmd){$cmd=Get-Command python3.exe -ErrorAction SilentlyContinue};if($cmd){$pyexe=$cmd.Source}else{$pr=Join-Path $env:LOCALAPPDATA 'Programs\Python';if(Test-Path $pr){$pf=Get-ChildItem $pr -Filter python.exe -File -Recurse -ErrorAction SilentlyContinue|Sort-Object FullName -Descending|Select-Object -First 1;if($pf){$pyexe=$pf.FullName}}}}
+ if(!$pyexe){Fail 'Python 3 not found.'};$pv=& $pyexe @pyargs --version 2>&1;if($LASTEXITCODE -ne 0 -or $pv -notmatch '^Python 3\.'){Fail "Python check failed: $pv"};Write-Host "PYTHON_OK: $pv"
+ Write-Host 'STEP 3: Prepare Apple Recovery...'
+ $oczip=Join-Path $Work 'OpenCore.zip';Invoke-WebRequest -Uri $OCUrl -OutFile $oczip -UseBasicParsing
+ if((Hash $oczip) -ne $OCHash.ToLowerInvariant()){Fail 'OpenCore ZIP SHA256 mismatch.'}
+ $ocdir=Join-Path $Work 'oc';Expand-Archive -LiteralPath $oczip -DestinationPath $ocdir -Force
+ $mr=@(Get-ChildItem $ocdir -Filter macrecovery.py -File -Recurse);if($mr.Count -ne 1){Fail 'macrecovery.py not uniquely found.'}
+ $rec=Join-Path $Work 'com.apple.recovery.boot';New-Item -ItemType Directory $rec -Force|Out-Null
+ $dmg=Join-Path $rec 'BaseSystem.dmg';$chunk=Join-Path $rec 'BaseSystem.chunklist';$pair=$null
+ $roots=@((Join-Path $env:USERPROFILE 'Downloads'),(Join-Path $env:USERPROFILE 'Desktop'),(Join-Path $env:USERPROFILE 'Documents'),'C:\temp',$env:TEMP)
+ foreach($sr in ($roots|Select-Object -Unique)){if($sr -and (Test-Path $sr)){ $hit=Get-ChildItem -LiteralPath $sr -Filter BaseSystem.dmg -File -Recurse -ErrorAction SilentlyContinue|Where-Object{Test-Path (Join-Path $_.DirectoryName 'BaseSystem.chunklist') -PathType Leaf}|Select-Object -First 1;if($hit){$pair=$hit.DirectoryName;break}}}
+ if($pair){Write-Host "LOCAL_RECOVERY_FOUND: $pair";Copy-Item (Join-Path $pair 'BaseSystem.dmg') $dmg;Copy-Item (Join-Path $pair 'BaseSystem.chunklist') $chunk}else{
+  Write-Host 'No local Recovery pair found; downloading from Apple (up to 6 attempts)...'
+  $ok=$false
+  for($i=1;$i -le 6;$i++){Remove-Item $dmg,$chunk -Force -ErrorAction SilentlyContinue;Push-Location $mr[0].DirectoryName;try{& $pyexe @pyargs $mr[0].FullName -b Mac-7BA5B2D9E42DDD94 -m 00000000000000000 -o $rec download;$rc=$LASTEXITCODE}finally{Pop-Location};if($rc -eq 0 -and (Test-Path $dmg) -and (Test-Path $chunk) -and (Get-Item $dmg).Length -ge 100MB){$ok=$true;break};if($i -lt 6){Start-Sleep -Seconds (5*$i)}}
+  if(!$ok){Fail 'Apple Recovery download failed; existing USB partition left intact.'}
+ }
+ $verify=Join-Path $Work 'verify.py'
+ @('import importlib.util, sys','s=sys.argv[1]','spec=importlib.util.spec_from_file_location("macrecovery",s)','m=importlib.util.module_from_spec(spec)','spec.loader.exec_module(m)','m.verify_image(sys.argv[2],sys.argv[3])')|Set-Content $verify -Encoding ASCII
+ & $pyexe @pyargs $verify $mr[0].FullName $dmg $chunk;if($LASTEXITCODE -ne 0){Fail 'Apple chunklist verification failed.'}
+ Write-Host 'APPLE_RECOVERY_CHUNKLIST_VERIFICATION_OK' -ForegroundColor Green
+ Write-Host 'STEP 4: Restore access to the existing ESP (no formatting)...'
+ $letter=[string]$part.DriveLetter
+ if(!$letter){$used=@(Get-CimInstance Win32_LogicalDisk|ForEach-Object{$_.DeviceID.TrimEnd(':')});foreach($x in @('Z','Y','X','W','V','U','T','S','R','Q')){if($used -notcontains $x){$letter=$x;break}};if(!$letter){Fail 'No free drive letter.'};$dp=Join-Path $Work 'assign.txt';@("select disk $($d.Number)","select partition $($part.PartitionNumber)","assign letter=$letter",'exit')|Set-Content $dp -Encoding ASCII;$o=& diskpart.exe /s $dp 2>&1;$o|ForEach-Object{Write-Host $_};if($LASTEXITCODE -ne 0){Fail 'DiskPart assign failed; no clean/format command was issued.'}}
+ $root=$letter+':\';$logical=$null
+ for($i=1;$i -le 10;$i++){Start-Sleep -Seconds 2;$logical=Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='"+$letter+":'") -ErrorAction SilentlyContinue;if($logical -and $logical.FileSystem -eq 'FAT32' -and $logical.VolumeName -eq 'OC-SEQUOIA' -and (Test-Path $root)){break}}
+ if(!$logical -or $logical.FileSystem -ne 'FAT32' -or $logical.VolumeName -ne 'OC-SEQUOIA' -or !(Test-Path $root)){Fail "Existing ESP not accessible/verified: drive=$letter, fs=$($logical.FileSystem), label=$($logical.VolumeName). No formatting was attempted."}
+ $check=Get-Partition -DiskNumber $d.Number -PartitionNumber $part.PartitionNumber
+ if(([string]$check.GptType).Trim('{}').ToLowerInvariant() -ne $Esp){Fail 'ESP GUID mismatch.'}
+ Write-Host "EXISTING_ESP_VERIFIED: $root; DISK=$($d.Number); PARTITION=$($part.PartitionNumber)" -ForegroundColor Green
+ Write-Host 'STEP 5: Copy EFI and Recovery files...'
+ $efiroot=Join-Path $root 'EFI';if(Test-Path $efiroot){Remove-Item $efiroot -Recurse -Force};New-Item -ItemType Directory $efiroot -Force|Out-Null
+ Get-ChildItem $src -Force|ForEach-Object{Copy-Item $_.FullName -Destination $efiroot -Recurse -Force}
+ $recDest=Join-Path $root 'com.apple.recovery.boot';if(Test-Path $recDest){Remove-Item $recDest -Recurse -Force};Copy-Item $rec $root -Recurse -Force
+ foreach($f in $files){$rel=$f.FullName.Substring($src.Length).TrimStart([char]92);$dest=Join-Path $efiroot $rel;if(!(Test-Path $dest -PathType Leaf) -or (Hash $dest) -ne (Hash $f.FullName)){Fail "EFI SHA256 mismatch: $rel"}}
+ foreach($n in @('BaseSystem.dmg','BaseSystem.chunklist')){$a=Join-Path $rec $n;$b=Join-Path $recDest $n;if(!(Test-Path $b -PathType Leaf) -or (Hash $a) -ne (Hash $b)){Fail "Recovery SHA256 mismatch: $n"}}
+ @('B460M Sequoia NO-SS04 USB resume',("DISK="+$d.Number),("SERIAL="+$Serial),'GPT=YES','ESP=YES','FAT32=YES',("EFI_FILES="+$files.Count),'HS04_SS04=ABSENT','APPLE_RECOVERY_CHUNKLIST=VERIFIED','SHA256_COPY=PASS','NO_CLEAN_NO_FORMAT=YES')|Set-Content (Join-Path $root 'USB-BUILD-REPORT.txt') -Encoding ASCII
+ Write-Host 'USB_RESUME_SUCCESS' -ForegroundColor Green;Write-Host "USB_ROOT=$root";Write-Host "EFI_FILES_VERIFIED=$($files.Count)";Write-Host 'APPLE_RECOVERY=VERIFIED';Write-Host 'COPY_SHA256=PASS';Write-Host 'NO_CLEAN_NO_FORMAT=YES'
+}catch{Write-Host ("ERROR: "+$_.Exception.Message) -ForegroundColor Red;exit 1}
+finally{if(Test-Path $Work){Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue}}
