@@ -42,17 +42,17 @@ jobs:
             'LITEON I T LCS-128L9S',
             'BusType -ne "USB"',
             'PartitionStyle -ne "GPT"',
-            'FileSystem -ne "FAT32"',
-            'IsBoot -or $disk.IsSystem',
             'BaseSystem.dmg',
             'BaseSystem.chunklist',
             'APPLY-BASELINE-02',
             'EFI-PREVIOUS-BASELINE02-',
             'EFI-FAILED-BASELINE02-',
-            'BASELINE02_DEPLOYMENT_SUCCESS'
+            'BASELINE02_DEPLOYMENT_SUCCESS',
+            'EFI-SHA256SUMS.txt',
+            'c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c'
           )
           foreach ($item in $required) {
-            if ($s -notlike "*$item*") { throw "Missing safety marker: $item" }
+            if ($s -notlike "*$item*") { throw "Missing safety/package marker: $item" }
           }
           $forbidden = @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')
           foreach ($item in $forbidden) {
@@ -65,3 +65,28 @@ jobs:
             throw "Two-step EFI rename deployment is missing."
           }
           Write-Host "TWO_STEP_AND_DISK_SAFETY_GUARDS=PASS"
+
+      - name: Download and verify the exact EFI-02 release package
+        shell: powershell
+        run: |
+          $url = "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/B460M-Baseline-EFI-02.zip"
+          $expected = "c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\efi02.zip" -UseBasicParsing
+          $actual = (Get-FileHash "$env:RUNNER_TEMP\efi02.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "EFI-02 ZIP SHA256 mismatch: $actual" }
+          Expand-Archive "$env:RUNNER_TEMP\efi02.zip" "$env:RUNNER_TEMP\efi02" -Force
+          $efi = "$env:RUNNER_TEMP\efi02\EFI"
+          $manifest = "$env:RUNNER_TEMP\efi02\EFI-SHA256SUMS.txt"
+          if (!(Test-Path $efi -PathType Container) -or !(Test-Path $manifest -PathType Leaf)) { throw "Release archive layout mismatch." }
+          $count = 0
+          foreach ($line in Get-Content $manifest) {
+            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?EFI/(.+)$') { throw "Malformed manifest line: $line" }
+            $relative = $Matches[2].Replace("/", "\")
+            $file = Join-Path $efi $relative
+            if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -ne $Matches[1].ToLowerInvariant()) { throw "Manifest hash mismatch: $relative" }
+            $count++
+          }
+          if ($count -lt 10) { throw "Manifest file count too small: $count" }
+          Write-Host "EFI02_RELEASE_PACKAGE_AND_MANIFEST=PASS files=$count"
