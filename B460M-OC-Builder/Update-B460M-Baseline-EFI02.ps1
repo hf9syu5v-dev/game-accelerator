@@ -57,7 +57,7 @@ function Assert-Manifest {
  $n=0
  foreach($line in Get-Content -LiteralPath $ManifestPath){
   if([string]::IsNullOrWhiteSpace($line)){continue}
-  if($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)throw "Malformed manifest line: $line"}
+  if($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)$'){throw "Malformed manifest line: $line"}
   $expected=$Matches[1].ToLowerInvariant(); $relative=$Matches[2].Replace("/","\")
   if($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)){throw "Unsafe manifest path."}
   $file=Join-Path $EfiRoot $relative
