@@ -1,0 +1,178 @@
+name: Build B460M keyboard transplant 04 - TianoCore EDK II UsbKbDxe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/build-b460m-keyboard-transplant-04-edk2-usbkbd.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download and verify exact VESA baseline EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/asus-b460-hackintosh-baseline-efi01/B460M-RX570-VESA-Diagnostic-EFI.zip" \
+            -o baseline.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  baseline.zip" | sha256sum --check
+          unzip -q baseline.zip -d baseline
+          test -s baseline/EFI/OC/config.plist
+          test -s baseline/EFI/BOOT/BOOTx64.efi
+
+      - name: Build upstream TianoCore EDK II UsbKbDxe (X64)
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential uuid-dev nasm iasl python3 python3-distutils
+          git clone --branch edk2-stable202405 --depth 1 https://github.com/tianocore/edk2.git edk2
+          cd edk2
+          git submodule update --init --depth 1
+          make -C BaseTools
+          source edksetup.sh
+          build -p MdeModulePkg/MdeModulePkg.dsc \
+            -m MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf \
+            -a X64 -t GCC5 -b RELEASE
+          cd ..
+          driver="$(find edk2/Build -type f -name UsbKbDxe.efi -print -quit)"
+          test -n "$driver"
+          mkdir -p baseline/EFI/OC/Drivers
+          install -m 0644 "$driver" baseline/EFI/OC/Drivers/UsbKbDxe.efi
+          sha256sum baseline/EFI/OC/Drivers/UsbKbDxe.efi | tee UsbKbDxe.sha256
+          file baseline/EFI/OC/Drivers/UsbKbDxe.efi
+
+      - name: Integrate UsbKbDxe into the untouched baseline configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+
+          root = Path("baseline/EFI/OC")
+          p = root / "config.plist"
+          c = plistlib.loads(p.read_bytes())
+          u = c["UEFI"]
+          inp = u["Input"]
+
+          # Use the upstream EDK II USB HID keyboard driver and OpenCore's
+          # SimpleTextInputEx protocol path. Do not enable OpenUsbKbDxe.
+          inp["KeySupport"] = True
+          inp["KeySupportMode"] = "V2"
+
+          drivers = u["Drivers"]
+          assert all(x.get("Path") != "UsbKbDxe.efi" for x in drivers)
+          assert all(x.get("Path") != "OpenUsbKbDxe.efi" for x in drivers)
+          drivers.append({
+              "Arguments": "",
+              "Comment": "TianoCore EDK II USB HID keyboard driver (UsbKbDxe)",
+              "Enabled": True,
+              "LoadEarly": False,
+              "Path": "UsbKbDxe.efi",
+          })
+
+          assert inp["KeySupport"] is True
+          assert inp["KeySupportMode"] == "V2"
+          assert all(x.get("Path") != "OpenUsbKbDxe.efi" for x in drivers)
+          assert any(x.get("Path") == "UsbKbDxe.efi" and x.get("Enabled") is True for x in drivers)
+          p.write_bytes(plistlib.dumps(c, fmt=plistlib.FMT_XML, sort_keys=True))
+          print("KEYBOARD_DRIVER=TianoCore-EDK2-UsbKbDxe")
+          print("KEYBOARD_PROTOCOL=EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL (plus SIMPLE_TEXT_INPUT)")
+          print("OPENCORE_KEYSUPPORT=True; KeySupportMode=V2")
+          print("OPENUSBKBD=ABSENT")
+          PY
+
+      - name: Validate using the matching OpenCore 1.0.5 validator
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.5-DEBUG.zip
+          unzip -q /tmp/OpenCore-1.0.5-DEBUG.zip -d /tmp/oc105
+          validator="$(find /tmp/oc105 -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" baseline/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root = Path("baseline/EFI/OC")
+          c = plistlib.loads((root / "config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["UEFI"]["Input"]["KeySupportMode"] == "V2"
+          assert any(x["Path"] == "UsbKbDxe.efi" and x["Enabled"] for x in c["UEFI"]["Drivers"])
+          assert (root / "Drivers/UsbKbDxe.efi").is_file()
+          assert all(x["Path"] != "OpenUsbKbDxe.efi" for x in c["UEFI"]["Drivers"])
+          assert "-radvesa" in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"]
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          for x in c["Kernel"]["Add"]:
+              assert (root / "Kexts" / x["BundlePath"]).exists(), x["BundlePath"]
+          for x in c["ACPI"]["Add"]:
+              assert (root / "ACPI" / x["Path"]).exists(), x["Path"]
+          for x in c["UEFI"]["Drivers"]:
+              assert (root / "Drivers" / x["Path"]).exists(), x["Path"]
+          print("PASS: OpenCore 1.0.5 config, all EFI paths, EDK II driver integration")
+          PY
+
+      - name: Package EFI 04 and generate manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > baseline/EDK2-USBKBD-04-README.txt <<'EOF'
+          B460M Keyboard Transplant 04 - TianoCore EDK II UsbKbDxe
+
+          Base EFI: the SHA256-pinned, previously boot-tested RX570 VESA baseline.
+          Added driver: upstream TianoCore EDK II MdeModulePkg/Bus/Usb/UsbKbDxe.
+          Source tag: edk2-stable202405.
+          Driver function: binds EFI_USB_IO_PROTOCOL on USB HID keyboard devices
+          and produces EFI_SIMPLE_TEXT_INPUT_PROTOCOL plus
+          EFI_SIMPLE_TEXT_INPUT_EX_PROTOCOL using asynchronous interrupt transfers.
+
+          OpenCore input configuration:
+          - UEFI.Input.KeySupport = True
+          - UEFI.Input.KeySupportMode = V2
+          - UEFI.Drivers includes UsbKbDxe.efi
+          - OpenUsbKbDxe.efi is not loaded.
+
+          Only the keyboard driver and its required OpenCore configuration are
+          changed from the baseline. SMBIOS, ACPI, kexts, USB mapping, boot args,
+          graphics/VESA settings, Recovery files and other EFI content are retained.
+          Build/ocvalidate success does not prove physical keyboard operation.
+          No BIOS setting, partition, Recovery file or internal disk is changed.
+          EOF
+          {
+            echo "# Keyboard Transplant 04 - EDK II UsbKbDxe"
+            echo "- Baseline ZIP SHA256: fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf"
+            echo "- Source: tianocore/edk2, tag edk2-stable202405"
+            echo "- Driver SHA256: $(cut -d' ' -f1 UsbKbDxe.sha256)"
+            echo "- OpenCore: 1.0.5; KeySupport=true; KeySupportMode=V2"
+            echo
+            find baseline/EFI -type f -print0 | sort -z | xargs -0 sha256sum
+          } > baseline/BUILD-MANIFEST-04.md
+          cd baseline
+          zip -qr ../B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip EFI BUILD-MANIFEST-04.md EDK2-USBKBD-04-README.txt
+          cd ..
+          unzip -t B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
+          sha256sum B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
+
+      - name: Publish separate 04 release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-keyboard-transplant-04-edk2-usbkbd
+          name: B460M Keyboard Transplant 04 - TianoCore EDK II UsbKbDxe
+          target_commitish: ${{ github.sha }}
+          files: B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
