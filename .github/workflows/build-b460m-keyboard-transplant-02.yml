@@ -57,10 +57,15 @@ jobs:
           c["Misc"]["Boot"]["PollAppleHotKeys"]=False
           c["UEFI"]["Drivers"].append({
               "Arguments":"",
+              "Comment":"Fallback USB keyboard input driver for controlled A/B test",
               "Enabled":True,
+              "HideVerbose":False,
               "LoadEarly":False,
               "Path":"OpenUsbKbDxe.efi"
           })
+          for driver in c["UEFI"]["Drivers"]:
+              driver.setdefault("Comment", "")
+              driver.setdefault("HideVerbose", False)
           assert c["UEFI"]["Input"]["KeySupport"] is False
           assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
           assert sum(1 for d in c["UEFI"]["Drivers"] if d.get("Enabled") and d.get("Path")=="OpenUsbKbDxe.efi")==1
