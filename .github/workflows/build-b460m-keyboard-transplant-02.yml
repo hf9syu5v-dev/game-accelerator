@@ -1,0 +1,144 @@
+name: Build B460M keyboard transplant 02 - OpenUsbKbDxe fallback
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-keyboard-transplant-02.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: b460m-keyboard-transplant-02
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exact known-good RX570 VESA baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip" -o baseline.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  baseline.zip" | sha256sum -c
+          mkdir baseline && unzip -q baseline.zip -d baseline
+          test -s baseline/EFI/OC/config.plist
+          test -s baseline/EFI/BOOT/BOOTx64.efi
+      - name: Download official OpenCore 1.0.5 DEBUG package and verify publisher digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip" -o oc.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  oc.zip" | sha256sum -c
+          mkdir oc && unzip -q oc.zip -d oc
+          driver="$(find oc -type f -name OpenUsbKbDxe.efi -print -quit)"
+          validator="$(find oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$driver" && test -n "$validator"
+          install -m 0644 "$driver" baseline/EFI/OC/Drivers/OpenUsbKbDxe.efi
+          install -m 0755 "$validator" ./ocvalidate
+      - name: Apply mutually exclusive OpenUsbKbDxe input path
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p=Path("baseline/EFI/OC/config.plist")
+          c=plistlib.loads(p.read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert not any(d.get("Path")=="OpenUsbKbDxe.efi" for d in c["UEFI"]["Drivers"])
+          c["UEFI"]["Input"]["KeySupport"]=False
+          c["Misc"]["Boot"]["PollAppleHotKeys"]=False
+          c["UEFI"]["Drivers"].append({
+              "Arguments":"",
+              "Enabled":True,
+              "LoadEarly":False,
+              "Path":"OpenUsbKbDxe.efi"
+          })
+          assert c["UEFI"]["Input"]["KeySupport"] is False
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert sum(1 for d in c["UEFI"]["Drivers"] if d.get("Enabled") and d.get("Path")=="OpenUsbKbDxe.efi")==1
+          assert not any(d.get("Enabled") and d.get("Path")=="Ps2KeyboardDxe.efi" for d in c["UEFI"]["Drivers"])
+          p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
+          print("VARIANT_02_KEYSUPPORT_DISABLED=PASS")
+          print("VARIANT_02_OPENUSBKBDXE_ENABLED=PASS")
+          print("VARIANT_02_POLLAPPLEHOTKEYS_DISABLED=PASS")
+          PY
+          ./ocvalidate baseline/EFI/OC/config.plist
+      - name: Verify exact delta, driver binary and baseline display/mouse preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, subprocess
+          from pathlib import Path
+          # Verify expected final profile and all enabled paths.
+          root=Path("baseline/EFI/OC")
+          c=plistlib.loads((root/"config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is False
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert (root/"Drivers/OpenUsbKbDxe.efi").is_file()
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"]=="iMac20,1"
+          args=c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"].split()
+          assert "-radvesa" in args and "-wegnoigpu" in args and "-wegnoegpu" not in args
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (root/"Drivers"/d["Path"]).is_file(),d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (root/"ACPI"/a["Path"]).is_file(),a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (root/"Kexts"/k["BundlePath"]).exists(),k["BundlePath"]
+          # Existing pointer-related UEFI settings are untouched by the profile transform.
+          assert "PointerSupport" in c["UEFI"]["Input"]
+          print("OPENCORE_CONFIG_AND_ENABLED_PATHS=PASS")
+          print("VESA_GRAPHICS_AND_SMBIOS_BASELINE=PRESERVED")
+          print("POINTER_CONFIGURATION=PRESENT")
+          PY
+      - name: Package variant 02
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > baseline/KEYBOARD-TRANSPLANT-02-REPORT.txt <<'EOF'
+          Keyboard transplant 02 - OpenUsbKbDxe fallback path
+
+          Base: previously deployed RX570 VESA EFI (pinned SHA256 in workflow).
+          OpenCore: official Acidanthera OpenCorePkg 1.0.5 DEBUG package.
+          Input delta only:
+            UEFI.Input.KeySupport = false
+            Misc.Boot.PollAppleHotKeys = false
+            add official OpenUsbKbDxe.efi and enable it in UEFI.Drivers
+
+          All other config fields and files remain from the VESA baseline except
+          the newly added OpenUsbKbDxe.efi driver and this report.
+
+          IMPORTANT: This is an isolated fallback test, not a recommended default
+          for modern UEFI. Dortania documents OpenUsbKbDxe as intended for legacy
+          DuetPkg systems and warns it may be harmful on Ivy Bridge and newer.
+          Its troubleshooting guide nevertheless lists the opposite driver path
+          (KeySupport off + OpenUsbKbDxe) as an A/B test when Picker input fails.
+          Do not use simultaneously with built-in KeySupport.
+          EOF
+          (cd baseline && zip -qr ../B460M-Keyboard-Transplant-02-OpenUsbKbDxe.zip EFI KEYBOARD-TRANSPLANT-02-REPORT.txt)
+          unzip -t B460M-Keyboard-Transplant-02-OpenUsbKbDxe.zip
+          sha256sum B460M-Keyboard-Transplant-02-OpenUsbKbDxe.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Keyboard-Transplant-02-OpenUsbKbDxe
+          path: B460M-Keyboard-Transplant-02-OpenUsbKbDxe.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish candidate 02
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-keyboard-transplant-02
+          name: B460M Keyboard Transplant 02 - OpenUsbKbDxe
+          target_commitish: ${{ github.sha }}
+          files: B460M-Keyboard-Transplant-02-OpenUsbKbDxe.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
