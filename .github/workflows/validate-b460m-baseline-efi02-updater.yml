@@ -76,7 +76,8 @@ jobs:
           if ($actual -ne $expected) { throw "EFI-02 ZIP SHA256 mismatch: $actual" }
           Expand-Archive "$env:RUNNER_TEMP\efi02.zip" "$env:RUNNER_TEMP\efi02" -Force
           $efi = "$env:RUNNER_TEMP\efi02\EFI"
-          $manifest = "$env:RUNNER_TEMP\efi02\EFI-SHA256SUMS.txt"
+          $manifest = "$env:RUNNER_TEMP\EFI-SHA256SUMS.txt"
+          Invoke-WebRequest -Uri "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/EFI-SHA256SUMS.txt" -OutFile $manifest -UseBasicParsing
           if (!(Test-Path $efi -PathType Container) -or !(Test-Path $manifest -PathType Leaf)) { throw "Release archive layout mismatch." }
           $count = 0
           foreach ($line in Get-Content $manifest) {
