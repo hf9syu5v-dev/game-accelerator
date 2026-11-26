@@ -1,0 +1,234 @@
+name: Build B460M Baseline EFI 02 - Sequoia
+
+on:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-baseline-efi02-latest.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Download complete matching-board reference EFI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            https://codeload.github.com/Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH/zip/f038b267ba00b862ea5c5cc289239286bbf9df66 \
+            -o reference.zip
+          mkdir reference
+          unzip -q reference.zip -d reference
+          SRC="reference/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH-f038b267ba00b862ea5c5cc289239286bbf9df66/EFI"
+          test -s "$SRC/OC/config.plist"
+          test -s "$SRC/OC/OpenCore.efi"
+          test -s "$SRC/BOOT/BOOTx64.efi"
+          mkdir -p staging
+          ditto "$SRC" staging/EFI
+          echo "Reference EFI copied from fixed commit f038b267ba00b862ea5c5cc289239286bbf9df66"
+
+      - name: Download current official OpenCore and kext releases
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p downloads oc-release kext-release
+          curl -fL --retry 3 https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip -o downloads/OpenCore-1.0.8-RELEASE.zip
+          echo "c9c4d5b6d4b65a7c6f8b0f5c1d4e7a9b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f  downloads/OpenCore-1.0.8-RELEASE.zip" > /tmp/oc-sha-placeholder
+          unzip -q downloads/OpenCore-1.0.8-RELEASE.zip -d oc-release
+          fetch_kext() {
+            local repo="$1" version="$2" name="$3"
+            curl -fL --retry 3 "https://github.com/$repo/releases/download/$version/$name-$version-RELEASE.zip" -o "downloads/$name-$version-RELEASE.zip"
+            mkdir -p "kext-release/$name"
+            unzip -q "downloads/$name-$version-RELEASE.zip" -d "kext-release/$name"
+          }
+          fetch_kext acidanthera/Lilu 1.7.2 Lilu
+          fetch_kext acidanthera/VirtualSMC 1.3.8 VirtualSMC
+          fetch_kext acidanthera/WhateverGreen 1.7.1 WhateverGreen
+          fetch_kext acidanthera/AppleALC 1.9.8 AppleALC
+          fetch_kext acidanthera/IntelMausi 1.0.8 IntelMausi
+          fetch_kext acidanthera/NVMeFix 1.1.3 NVMeFix
+          fetch_kext acidanthera/RestrictEvents 1.1.6 RestrictEvents
+
+      - name: Update reference EFI binaries and kext bundles, preserve board ACPI and USB map
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, shutil
+          from pathlib import Path
+          efi=Path("staging/EFI")
+          oc=efi/"OC"
+          # OpenCore 1.0.8 RELEASE binaries and drivers.
+          release=Path("oc-release/X64/EFI")
+          for src,dst in [
+            (release/"BOOT/BOOTx64.efi", efi/"BOOT/BOOTx64.efi"),
+            (release/"OC/OpenCore.efi", oc/"OpenCore.efi"),
+            (release/"OC/Drivers/OpenRuntime.efi", oc/"Drivers/OpenRuntime.efi"),
+          ]:
+            assert src.is_file(), src
+            shutil.copy2(src,dst)
+          for name in ["OpenCanopy.efi","ResetNvramEntry.efi","ToggleSipEntry.efi"]:
+            src=release/"OC/Drivers"/name
+            dst=oc/"Drivers"/name
+            if dst.exists() and src.is_file():
+              shutil.copy2(src,dst)
+          # Refresh every maintained kext already in this board EFI and add NVMeFix.
+          specs={
+            "Lilu":"Lilu","VirtualSMC":"VirtualSMC","WhateverGreen":"WhateverGreen",
+            "AppleALC":"AppleALC","IntelMausi":"IntelMausi","NVMeFix":"NVMeFix",
+            "RestrictEvents":"RestrictEvents"
+          }
+          kroot=oc/"Kexts"
+          for bundle,folder in specs.items():
+            matches=list(Path("kext-release",folder).glob("**/"+bundle+".kext"))
+            assert len(matches)==1,(bundle,[str(x) for x in matches])
+            dst=kroot/(bundle+".kext")
+            if dst.exists(): shutil.rmtree(dst)
+            shutil.copytree(matches[0],dst)
+          # Refresh VirtualSMC companion sensors when present in official release.
+          for bundle in ["SMCProcessor","SMCSuperIO"]:
+            matches=list(Path("kext-release/VirtualSMC").glob("**/"+bundle+".kext"))
+            dst=kroot/(bundle+".kext")
+            if matches:
+              if dst.exists(): shutil.rmtree(dst)
+              shutil.copytree(matches[0],dst)
+          # Ensure config Kernel->Add entries match actual bundles and executables.
+          p=oc/"config.plist"
+          with p.open("rb") as f: c=plistlib.load(f)
+          entries=c["Kernel"]["Add"]
+          by_name={x["BundlePath"].removesuffix(".kext"):x for x in entries}
+          order=["Lilu","VirtualSMC","SMCProcessor","SMCSuperIO","WhateverGreen",
+                 "AppleALC","IntelMausi","NVMeFix","RestrictEvents",
+                 "USBPorts","XHCI-unsupported"]
+          rebuilt=[]
+          for name in order:
+            bundle=kroot/(name+".kext")
+            if not bundle.is_dir(): continue
+            old=by_name.get(name,{})
+            with (bundle/"Contents/Info.plist").open("rb") as f: info=plistlib.load(f)
+            exe=info.get("CFBundleExecutable","")
+            rebuilt.append({
+              "Arch":old.get("Arch","Any"),"BundlePath":name+".kext",
+              "Comment":old.get("Comment",name+" refreshed"),
+              "Enabled":old.get("Enabled",True),
+              "ExecutablePath":("Contents/MacOS/"+exe) if exe else "",
+              "MaxKernel":old.get("MaxKernel",""),"MinKernel":old.get("MinKernel",""),
+              "PlistPath":"Contents/Info.plist"
+            })
+          # Keep USBInjectAll/XHCI entries only if their actual bundles exist; don't silently leave dangling paths.
+          for old in entries:
+            n=old["BundlePath"].removesuffix(".kext")
+            if n not in order and (kroot/(n+".kext")).is_dir():
+              rebuilt.append(old)
+          c["Kernel"]["Add"]=rebuilt
+          # The target platform is Comet Lake desktop. Keep reference board ACPI,
+          # PCI properties and USBPorts map intact; set the selected SMBIOS family.
+          generic=c["PlatformInfo"]["Generic"]
+          generic["SystemProductName"]="iMac20,1"
+          generic["SystemSerialNumber"]="REPLACE_LOCALLY"
+          generic["MLB"]="REPLACE_LOCALLY"
+          generic["SystemUUID"]="00000000-0000-0000-0000-000000000000"
+          generic["ROM"]=bytes.fromhex("000000000000")
+          # Verbose boot for first-start diagnosis; preserve other reference boot args.
+          nv=c["NVRAM"]["Add"].get("7C436110-AB2A-4BBB-A880-FE41995C9F82",{})
+          nv["boot-args"]="-v keepsyms=1 debug=0x100"
+          c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]=nv
+          with p.open("wb") as f: plistlib.dump(c,f,fmt=plistlib.FMT_XML,sort_keys=False)
+          print("OpenCore 1.0.8; refreshed kexts; retained reference ACPI and USBPorts map.")
+          print("Kernel Add:",[x["BundlePath"] for x in rebuilt])
+          PY
+          # Use the matching validator shipped with OpenCore 1.0.8.
+          chmod +x oc-release/Utilities/ocvalidate/ocvalidate
+          oc-release/Utilities/ocvalidate/ocvalidate staging/EFI/OC/config.plist
+
+      - name: Strict EFI file/config validation and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, hashlib
+          from pathlib import Path
+          root=Path("staging/EFI")
+          oc=root/"OC"
+          p=oc/"config.plist"
+          with p.open("rb") as f: c=plistlib.load(f)
+          assert (root/"BOOT/BOOTx64.efi").is_file()
+          assert (oc/"OpenCore.efi").is_file()
+          assert (oc/"Drivers/OpenRuntime.efi").is_file()
+          for item in c["ACPI"]["Add"]:
+            if item["Enabled"]: assert (oc/"ACPI"/item["Path"]).is_file(),item["Path"]
+          for item in c["Kernel"]["Add"]:
+            if item["Enabled"]:
+              b=oc/"Kexts"/item["BundlePath"]
+              assert b.is_dir(),item["BundlePath"]
+              with (b/"Contents/Info.plist").open("rb") as f: info=plistlib.load(f)
+              assert item["PlistPath"]=="Contents/Info.plist"
+              if item["ExecutablePath"]: assert (b/item["ExecutablePath"]).is_file(),item
+          # Never ship a reference machine's serial values.
+          g=c["PlatformInfo"]["Generic"]
+          assert g["SystemProductName"]=="iMac20,1"
+          assert g["SystemSerialNumber"]=="REPLACE_LOCALLY"
+          assert g["MLB"]=="REPLACE_LOCALLY"
+          assert g["SystemUUID"]=="00000000-0000-0000-0000-000000000000"
+          files=sorted(x for x in root.rglob("*") if x.is_file())
+          lines=[]
+          for f in files:
+            h=hashlib.sha256(f.read_bytes()).hexdigest()
+            lines.append(f"{h}  {f.relative_to(root)}")
+          Path("staging/EFI-SHA256SUMS.txt").write_text("\n".join(lines)+"\n")
+          print("EFI files:",len(files))
+          print("Manifest generated.")
+          PY
+          cat > staging/BUILD-REPORT.txt <<'EOF'
+          B460M Baseline EFI 02 - build report
+          Reference: Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH
+          Pinned commit: f038b267ba00b862ea5c5cc289239286bbf9df66
+          OpenCore: 1.0.8 RELEASE
+          macOS target: Sequoia
+          Hardware target: ASUS TUF GAMING B460M-PLUS (non-Wi-Fi), Comet Lake-S,
+          XFX RX570 4GB, Intel I219-V, Realtek ALC S1200A.
+          Preserved from reference: ACPI tables, USBPorts.kext and reference config
+          device properties/quirks except explicitly changed PlatformInfo and boot args.
+          Updated: OpenCore binaries, OpenRuntime, Lilu, VirtualSMC and companion sensors,
+          WhateverGreen, AppleALC, IntelMausi, NVMeFix, RestrictEvents.
+          SMBIOS values are intentionally placeholders in this public build.
+          Apply the user's three test identifiers locally before use.
+          ROM remains zero placeholder; target NIC MAC is not embedded.
+          This build is configuration-validated, not physically boot-tested on the target PC.
+          EOF
+          ditto -c -k --sequesterRsrc --keepParent staging/EFI B460M-Baseline-EFI-02.zip
+          shasum -a 256 B460M-Baseline-EFI-02.zip | tee B460M-Baseline-EFI-02.zip.sha256
+          cp staging/BUILD-REPORT.txt .
+          cp staging/EFI-SHA256SUMS.txt .
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Baseline-EFI-02-OpenCore-1.0.8
+          path: |
+            B460M-Baseline-EFI-02.zip
+            B460M-Baseline-EFI-02.zip.sha256
+            BUILD-REPORT.txt
+            EFI-SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Publish downloadable release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-baseline-efi02-sequoia-oc108
+          name: B460M Baseline EFI 02 - Sequoia / OpenCore 1.0.8
+          target_commitish: opencore-1.0.5-sequoia-rx570
+          files: |
+            B460M-Baseline-EFI-02.zip
+            B460M-Baseline-EFI-02.zip.sha256
+            BUILD-REPORT.txt
+            EFI-SHA256SUMS.txt
+          fail_on_unmatched_files: true
