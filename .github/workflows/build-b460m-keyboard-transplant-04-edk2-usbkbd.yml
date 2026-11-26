@@ -39,6 +39,7 @@ jobs:
           cd edk2
           git submodule update --init --depth 1 BaseTools/Source/C/BrotliCompress/brotli
           make -C BaseTools
+          export WORKSPACE="$PWD"
           source edksetup.sh
           build -p MdeModulePkg/MdeModulePkg.dsc \
             -m MdeModulePkg/Bus/Usb/UsbKbDxe/UsbKbDxe.inf \
