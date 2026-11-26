@@ -1,4 +1,4 @@
-name: Validate Baseline EFI 02 two-step updater
+name: Validate Baseline EFI 02 single-run updater
 on:
   workflow_dispatch:
   push:
@@ -32,10 +32,10 @@ jobs:
           $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
           $s = Get-Content $path -Raw
           $required = @(
-            '000000123ADC','LITEON I T LCS-128L9S','APPLY-BASELINE-02',
+            '000000123ADC','LITEON I T LCS-128L9S','UPDATE-B460M-EFI02',
             'EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-',
             'EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c',
-            'ValidateSet("Prepare","Apply")','C02J5NYBPN5T','C02231609GUPHC1JC',
+            'Single-run deployment','C02J5NYBPN5T','C02231609GUPHC1JC',
             '78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6','Get-NetAdapter -Physical',
             'SMBIOS_INJECTION_VERIFIED','-SkipConfigPlist',
             'C:\\Program Files\\PyManager\\python.exe','Using previously installed Python'
@@ -44,8 +44,14 @@ jobs:
           foreach ($item in @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')) {
             if ($s.Contains($item)) { throw "Forbidden disk operation: $item" }
           }
+          if ($s -match 'ValidateSet\("Prepare","Apply"\)' -or $s -match '\$Step -eq') {
+            throw "Legacy manual Prepare/Apply interface must not return."
+          }
           if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') {
-            throw "Two-step rename operations missing."
+            throw "Single-run backup/install rename operations missing."
+          }
+          if ($s -notmatch 'Assert-RecoveryReadOnly' -or $s -notmatch 'Previous EFI restored successfully') {
+            throw "Recovery guard or rollback protection missing."
           }
           Write-Host "UPDATER_SAFETY_AND_SMBIOS_GUARDS=PASS"
       - name: Test SMBIOS plist injection and verification
