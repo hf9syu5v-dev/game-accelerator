@@ -26,7 +26,7 @@ jobs:
           foreach($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk')){
             if($s -match [regex]::Escape($term)){throw "Forbidden disk/partition operation: $term"}
           }
-          foreach($required in @('000000123ADC','LITEON I T LCS-128L9S','e27a2ea40408f084ad01f87464930113fc45fe68352822a15f682a2f9a831299','cda631d44699b37143f044a00ad679b8c49ca629d4106256d7ab082bc83c06f0','KeySupportMode','ConnectDrivers','UsbKbDxe.efi','BASELINE_ZIP_SHA256_MISMATCH','KEYBOARD_TRANSPLANT_04_DEPLOYMENT_SUCCESS','BaseSystem.dmg','BaseSystem.chunklist','Rename-Item')){
+          foreach($required in @('000000123ADC','LITEON I T LCS-128L9S','e27a2ea40408f084ad01f87464930113fc45fe68352822a15f682a2f9a831299','cda631d44699b37143f044a00ad679b8c49ca629d4106256d7ab082bc83c06f0','KeySupportMode','ConnectDrivers','UsbKbDxe.efi','BASELINE_ZIP_SHA256_MISMATCH','KNOWN_03_ZIP_SHA256_MISMATCH','1f58abf923271881bab162bebbe26b8d1c6ab6e75b778b6d48c6785b747dc69b','KEYBOARD_TRANSPLANT_04_DEPLOYMENT_SUCCESS','BaseSystem.dmg','BaseSystem.chunklist','Rename-Item')){
             if($s -notmatch [regex]::Escape($required)){throw "Missing safety assertion: $required"}
           }
           'POWERSHELL_PARSE=PASS'
