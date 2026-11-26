@@ -56,6 +56,10 @@ jobs:
           assert not any(d.get("Path")=="OpenUsbKbDxe.efi" for d in c["UEFI"]["Drivers"])
           c["UEFI"]["Input"]["KeySupport"]=False
           c["Misc"]["Boot"]["PollAppleHotKeys"]=False
+          # Remove 1.0.8-only HideVerbose metadata inherited from the baseline config;
+          # keep all actual driver paths/options intact for the 1.0.5 schema.
+          for driver in c["UEFI"]["Drivers"]:
+              driver.pop("HideVerbose", None)
           c["UEFI"]["Drivers"].append({
               "Arguments":"",
               "Comment":"Fallback USB keyboard input driver for controlled A/B test",
@@ -67,6 +71,7 @@ jobs:
           assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
           assert sum(1 for d in c["UEFI"]["Drivers"] if d.get("Enabled") and d.get("Path")=="OpenUsbKbDxe.efi")==1
           assert not any(d.get("Enabled") and d.get("Path")=="Ps2KeyboardDxe.efi" for d in c["UEFI"]["Drivers"])
+          assert not any("HideVerbose" in d for d in c["UEFI"]["Drivers"])
           p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
           print("VARIANT_02_KEYSUPPORT_DISABLED=PASS")
           print("VARIANT_02_OPENUSBKBDXE_ENABLED=PASS")
@@ -116,6 +121,8 @@ jobs:
             add official OpenUsbKbDxe.efi and enable it in UEFI.Drivers
 
           OpenCore 1.0.5 binaries remain unchanged; no cross-version driver is mixed in.
+          1.0.8-only HideVerbose metadata is removed from driver dictionaries so the
+          config conforms to the baseline OpenCore 1.0.5 schema; driver paths/options remain intact.
           All other config fields and files remain from the VESA baseline except
           the newly added OpenUsbKbDxe.efi driver and this report.
 
