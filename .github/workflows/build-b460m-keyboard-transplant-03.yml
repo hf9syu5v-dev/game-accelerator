@@ -1,0 +1,114 @@
+name: Build B460M keyboard transplant 03 - built-in KeySupport without hotkey polling
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-keyboard-transplant-03.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: b460m-keyboard-transplant-03
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify the known-good VESA baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip" -o baseline.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  baseline.zip" | sha256sum -c
+          mkdir baseline && unzip -q baseline.zip -d baseline
+          test -s baseline/EFI/OC/config.plist
+          test -s baseline/EFI/BOOT/BOOTx64.efi
+      - name: Apply built-in KeySupport with PollAppleHotKeys disabled
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          p=Path("baseline/EFI/OC/config.plist")
+          c=plistlib.loads(p.read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert not any(d.get("Path") in ("OpenUsbKbDxe.efi","Ps2KeyboardDxe.efi") for d in c["UEFI"]["Drivers"])
+          # Single-variable experiment: change only PollAppleHotKeys.
+          c["Misc"]["Boot"]["PollAppleHotKeys"]=False
+          p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert not any(d.get("Path") in ("OpenUsbKbDxe.efi","Ps2KeyboardDxe.efi") and d.get("Enabled") for d in c["UEFI"]["Drivers"])
+          print("KEYSUPPORT_REMAINS_ENABLED=PASS")
+          print("POLLAPPLEHOTKEYS_DISABLED=PASS")
+          print("NO_EXTERNAL_KEYBOARD_DRIVER=PASS")
+          PY
+      - name: Validate with official OpenCore 1.0.8 ocvalidate and verify preserved config
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" -o oc.zip
+          echo "3f5f42b85703cf2c08e8dcd9245a52fb4326c9f4ef335c75b49f516cbbbe131c6  oc.zip" | sha256sum -c
+          mkdir oc && unzip -q oc.zip -d oc
+          validator="$(find oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator" && chmod +x "$validator"
+          "$validator" baseline/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          c=plistlib.loads(Path("baseline/EFI/OC/config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is False
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"]=="iMac20,1"
+          args=c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"].split()
+          assert "-radvesa" in args and "-wegnoigpu" in args and "-wegnoegpu" not in args
+          assert not any(d.get("Path") in ("OpenUsbKbDxe.efi","Ps2KeyboardDxe.efi") for d in c["UEFI"]["Drivers"])
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (Path("baseline/EFI/OC/Drivers")/d["Path"]).is_file(),d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (Path("baseline/EFI/OC/ACPI")/a["Path"]).is_file(),a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (Path("baseline/EFI/OC/Kexts")/k["BundlePath"]).exists(),k["BundlePath"]
+          print("OCVALIDATE_AND_ALL_ENABLED_PATHS=PASS")
+          print("VESA_GRAPHICS_SMBIOS_USB_AND_POINTER_BASELINE=PRESERVED")
+          PY
+      - name: Package candidate 03 and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > baseline/KEYBOARD-TRANSPLANT-03-REPORT.txt <<'EOF'
+          Keyboard transplant 03 - built-in OpenCore input with hotkey polling disabled
+
+          Base: pinned, previously real-hardware-tested RX570 VESA baseline.
+          Only config change: Misc.Boot.PollAppleHotKeys = false.
+          UEFI.Input.KeySupport remains true. No OpenUsbKbDxe or Ps2KeyboardDxe is added.
+          All ACPI, kexts, USB map, pointer, graphics, SMBIOS and other config remain baseline.
+          This is a one-variable A/B test. Test only after candidate 02 and restore baseline between candidates.
+          EOF
+          (cd baseline && zip -qr ../B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling.zip EFI KEYBOARD-TRANSPLANT-03-REPORT.txt)
+          unzip -t B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling.zip
+          sha256sum B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling
+          path: B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling.zip
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish candidate 03
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-keyboard-transplant-03
+          name: B460M Keyboard Transplant 03 - KeySupport without PollAppleHotKeys
+          target_commitish: ${{ github.sha }}
+          files: B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
