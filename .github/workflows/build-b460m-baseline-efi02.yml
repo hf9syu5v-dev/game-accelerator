@@ -1,0 +1,167 @@
+name: Build B460M Hackintosh Baseline EFI 02
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-baseline-efi02.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: b460m-baseline-efi02
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify the current OpenCore 1.0.8 EFI base
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip" -o base.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  base.zip" | sha256sum --check
+          mkdir base
+          unzip -q base.zip -d base
+          test -s base/EFI/BOOT/BOOTx64.efi
+          test -s base/EFI/OC/OpenCore.efi
+          test -s base/EFI/OC/config.plist
+
+      - name: Fetch the closest board plus RX570 reference
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "https://raw.githubusercontent.com/Swayyyyy/ASUS-TUF-GAMING-B460M-PLUS-RX570-Hackintosh-Opencore/eb12823abf12e1e38b0f29b8e658a9e2812b862f/EFI/OC/config.plist" -o reference-config.plist
+          test -s reference-config.plist
+          sha256sum reference-config.plist
+
+      - name: Compare target and reference; make only the two boot-enabling changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib, json
+          from pathlib import Path
+          target_path = Path("base/EFI/OC/config.plist")
+          target = plistlib.loads(target_path.read_bytes())
+          ref = plistlib.loads(Path("reference-config.plist").read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          targs = target["NVRAM"]["Add"][guid]["boot-args"].split()
+          rargs = ref["NVRAM"]["Add"][guid]["boot-args"].split()
+          t_igpu = target["DeviceProperties"]["Add"].get("PciRoot(0x0)/Pci(0x2,0x0)", {})
+          r_igpu = ref["DeviceProperties"]["Add"].get("PciRoot(0x0)/Pci(0x2,0x0)", {})
+          t_hdef = target["DeviceProperties"]["Add"].get("PciRoot(0x0)/Pci(0x1F,0x3)", {})
+          r_hdef = ref["DeviceProperties"]["Add"].get("PciRoot(0x0)/Pci(0x1F,0x3)", {})
+          assert "-radvesa" in targs, "Expected VESA diagnostic base"
+          assert "-wegnoigpu" in targs, "Expected iGPU-disabled diagnostic base"
+          assert "-wegnoegpu" not in targs
+          assert target["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          final_args = [x for x in targs if x not in ("-radvesa", "-wegnoigpu")]
+          assert len(final_args) == len(targs) - 2
+          target["NVRAM"]["Add"][guid]["boot-args"] = " ".join(final_args)
+          target_path.write_bytes(plistlib.dumps(target, fmt=plistlib.FMT_XML, sort_keys=False))
+          report = {
+            "selected_reference": "Swayyyyy/ASUS-TUF-GAMING-B460M-PLUS-RX570-Hackintosh-Opencore",
+            "reference_commit": "eb12823abf12e1e38b0f29b8e658a9e2812b862f",
+            "reference_opencore": "0.5.9 (README declaration)",
+            "reference_board": "ASUS TUF GAMING B460M-PLUS",
+            "reference_gpu": "RX570",
+            "comparison": {
+              "target_opencore_base": "1.0.8",
+              "target_smbios": target["PlatformInfo"]["Generic"]["SystemProductName"],
+              "target_iGPU_properties": t_igpu,
+              "reference_iGPU_properties": r_igpu,
+              "target_HDEF_properties": t_hdef,
+              "reference_HDEF_properties": r_hdef,
+              "reference_boot_args": rargs,
+              "reference_kexts": [x["BundlePath"] for x in ref["Kernel"]["Add"] if x.get("Enabled")],
+              "target_kexts": [x["BundlePath"] for x in target["Kernel"]["Add"] if x.get("Enabled")]
+            },
+            "changes_made": ["Removed -radvesa", "Removed -wegnoigpu"],
+            "not_changed": ["All ACPI", "All kext binaries and order", "All UEFI drivers", "USBToolBox and user UTBMap", "SMBIOS", "CPU identity and quirks", "OpenCore 1.0.8 binaries", "All other config.plist keys and boot arguments"],
+            "reference_not_copied_reason": ["OpenCore 0.5.9 is too old for direct Sequoia use", "Reference contains LucyRTL8125Ethernet but target uses Intel I219-V", "Reference uses a different USBPorts.kext map and older kext set"]
+          }
+          Path("BASELINE-02-COMPARISON.json").write_text(json.dumps(report, indent=2, default=lambda x: x.hex() if isinstance(x, bytes) else str(x)))
+          print("BASELINE02_BOOT_ARGS=" + target["NVRAM"]["Add"][guid]["boot-args"])
+          print("ONLY_TWO_BOOT_ARGUMENTS_REMOVED=PASS")
+          print("NO_OTHER_CONFIG_FIELDS_CHANGED=PASS")
+          PY
+
+      - name: Validate with matching OpenCore 1.0.8 ocvalidate and all referenced files
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3f5f42b85703cf2c08e8dcd9245a52fb4326c9f4ef335c75b49f516cbbe131c6  /tmp/OpenCore-1.0.8-DEBUG.zip" | sha256sum --check
+          mkdir /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" base/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          root = Path("base/EFI/OC")
+          c = plistlib.loads((root/"config.plist").read_bytes())
+          guid = "7C436110-AB2A-4BBB-A880-FE41995C9F82"
+          args = c["NVRAM"]["Add"][guid]["boot-args"].split()
+          assert "-radvesa" not in args and "-wegnoigpu" not in args
+          assert "-wegnoegpu" not in args
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (root/"Drivers"/d["Path"]).is_file(), d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (root/"ACPI"/a["Path"]).is_file(), a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (root/"Kexts"/k["BundlePath"]).exists(), k["BundlePath"]
+          print("CONFIG_AND_ALL_ENABLED_PATHS=PASS")
+          PY
+
+      - name: Package EFI 02 with file manifest and comparison report
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > base/BASELINE-02-README.txt <<'EOF'
+          ASUS TUF GAMING B460M-PLUS — HACKINTOSH BASELINE EFI 02
+          Purpose: first normal-graphics boot candidate for the target machine.
+          Hardware reference: Swayyyyy ASUS TUF GAMING B460M-PLUS + RX570.
+          Reference commit: eb12823abf12e1e38b0f29b8e658a9e2812b862f.
+          Base files: existing OpenCore 1.0.8 EFI.
+          Only config changes: remove -radvesa and -wegnoigpu.
+          All other config values, ACPI, kexts, drivers, USB map, SMBIOS and binaries retained.
+          This is a first-boot candidate, not a claim of successful hardware boot.
+          No macOS installation, disk or partition modifications are performed.
+          EOF
+          (
+            cd base
+            find EFI -type f -print0 | sort -z | xargs -0 sha256sum > EFI-MANIFEST.sha256
+            zip -qr ../B460M-Hackintosh-Baseline-EFI-02.zip EFI BASELINE-02-README.txt BASELINE-02-COMPARISON.json EFI-MANIFEST.sha256
+          )
+          unzip -t B460M-Hackintosh-Baseline-EFI-02.zip
+          sha256sum B460M-Hackintosh-Baseline-EFI-02.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Hackintosh-Baseline-EFI-02
+          path: B460M-Hackintosh-Baseline-EFI-02.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish Baseline EFI 02
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-hackintosh-baseline-efi02
+          name: ASUS B460M Hackintosh Baseline EFI 02
+          target_commitish: ${{ github.sha }}
+          files: B460M-Hackintosh-Baseline-EFI-02.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
