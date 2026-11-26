@@ -32,7 +32,7 @@ jobs:
           $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
           $s = Get-Content $path -Raw
           $required = @(
-            '000000123ADC','LCS-128L9S$','$i219Adapters','UPDATE-B460M-EFI02',
+            '000000123ADC','LCS-128L9S
             'EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-',
             'EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c',
             'Single-run deployment','C02J5NYBPN5T','C02231609GUPHC1JC',
