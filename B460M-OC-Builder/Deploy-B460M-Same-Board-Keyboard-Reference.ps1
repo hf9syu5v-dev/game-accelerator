@@ -13,9 +13,10 @@ $EspGuid = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 $ArtifactUrl = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-same-board-keyboard-reference/B460M-Same-Board-Keyboard-Reference-EFI.zip'
 $ArtifactSha256 = '55117f0c1ecc87eea6a62d83acb57c5b5f84c1e9adbc7cd773ecd36724c26835'
 $KnownBaseline = 'EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC'
-$BackupName = 'EFI-PREVIOUS-SAME-BOARD-REFERENCE-BASELINE'
-$StageName = 'EFI-SAME-BOARD-REFERENCE-STAGING'
-$FailedName = 'EFI-SAME-BOARD-REFERENCE-FAILED'
+$RunSuffix = [guid]::NewGuid().ToString('N').Substring(0,8)
+$BackupName = 'EFI-PREVIOUS-SAME-BOARD-REFERENCE-BASELINE-' + $RunSuffix
+$StageName = 'EFI-SAME-BOARD-REFERENCE-STAGING-' + $RunSuffix
+$FailedName = 'EFI-SAME-BOARD-REFERENCE-FAILED-' + $RunSuffix
 $BaseSystemSha256 = '7314eb401f5e84087f621b3599f0ad21ca3cdcc2685ea2da7f76806792328e20'
 $ChunklistSha256 = 'dbf262b83a16d55f1b2d8ce8ce95986561f8e889719524ea4b7aa22a2417ca27'
 
