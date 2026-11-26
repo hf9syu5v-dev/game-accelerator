@@ -83,13 +83,16 @@ jobs:
               entry.pop("HideVerbose", None)
           assert all(x.get("Path") != "UsbKbDxe.efi" for x in drivers)
           assert all(x.get("Path") != "OpenUsbKbDxe.efi" for x in drivers)
-          drivers.append({
+          entry = {
               "Arguments": "",
               "Comment": "TianoCore EDK II USB HID keyboard driver (UsbKbDxe)",
               "Enabled": True,
               "LoadEarly": False,
               "Path": "UsbKbDxe.efi",
-          })
+          }
+          # Keep OpenRuntime.efi in its original final position.
+          runtime_index = next((i for i, x in enumerate(drivers) if x.get("Path") == "OpenRuntime.efi"), len(drivers))
+          drivers.insert(runtime_index, entry)
 
           assert inp["KeySupport"] is True
           assert inp["KeySupportMode"] == "V2"
