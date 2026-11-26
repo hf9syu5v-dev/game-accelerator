@@ -141,8 +141,9 @@ jobs:
             if n not in order and (kroot/(n+".kext")).is_dir():
               rebuilt.append(old)
           c["Kernel"]["Add"]=rebuilt
-          # The target platform is Comet Lake desktop. Keep reference board ACPI,
-          # PCI properties and USBPorts map intact; set the selected SMBIOS family.
+          # Keep board ACPI and USB map. Set UHD630 to Comet Lake headless mode.
+          igpu=c["DeviceProperties"]["Add"].setdefault("PciRoot(0x0)/Pci(0x2,0x0)",{})
+          igpu["AAPL,ig-platform-id"]=bytes.fromhex("0300913E")
           generic=c["PlatformInfo"]["Generic"]
           generic["SystemProductName"]="iMac20,1"
           generic["SystemSerialNumber"]="REPLACE_LOCALLY"
@@ -207,8 +208,8 @@ jobs:
           macOS target: Sequoia
           Hardware target: ASUS TUF GAMING B460M-PLUS (non-Wi-Fi), Comet Lake-S,
           XFX RX570 4GB, Intel I219-V, Realtek ALC S1200A.
-          Preserved from reference: ACPI tables, USBPorts.kext and reference config
-          device properties/quirks except explicitly changed PlatformInfo and boot args.
+          Preserved from reference: ACPI tables, USBPorts.kext and board-specific quirks.
+          UHD630 AAPL,ig-platform-id changed to Comet Lake headless 0300913E for RX570 display output.
           Updated: OpenCore binaries, OpenRuntime, Lilu, VirtualSMC and companion sensors,
           WhateverGreen, AppleALC, IntelMausi, NVMeFix, RestrictEvents.
           SMBIOS values are intentionally placeholders in this public build.
