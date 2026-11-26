@@ -1,0 +1,67 @@
+name: Validate Baseline EFI 02 two-step updater
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
+      - ".github/workflows/validate-b460m-baseline-efi02-updater.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse PowerShell 5.1 syntax
+        shell: powershell
+        run: |
+          $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Host
+            throw "PowerShell parser reported syntax errors."
+          }
+          Write-Host "POWERSHELL_51_PARSE=PASS"
+
+      - name: Verify two-step and disk safety guards
+        shell: powershell
+        run: |
+          $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
+          $s = Get-Content $path -Raw
+          $required = @(
+            '[ValidateSet("Prepare","Apply")]',
+            '000000123ADC',
+            'LITEON I T LCS-128L9S',
+            'BusType -ne "USB"',
+            'PartitionStyle -ne "GPT"',
+            'FileSystem -ne "FAT32"',
+            'IsBoot -or $disk.IsSystem',
+            'BaseSystem.dmg',
+            'BaseSystem.chunklist',
+            'APPLY-BASELINE-02',
+            'EFI-PREVIOUS-BASELINE02-',
+            'EFI-FAILED-BASELINE02-',
+            'BASELINE02_DEPLOYMENT_SUCCESS'
+          )
+          foreach ($item in $required) {
+            if ($s -notlike "*$item*") { throw "Missing safety marker: $item" }
+          }
+          $forbidden = @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')
+          foreach ($item in $forbidden) {
+            if ($s.Contains($item)) { throw "Forbidden disk operation found: $item" }
+          }
+          if ($s -match 'Remove-Item[^\r\n]*\$Recovery' -or $s -match 'Copy-Item[^\r\n]*\$Recovery') {
+            throw "Recovery directory must never be copied or removed."
+          }
+          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') {
+            throw "Two-step EFI rename deployment is missing."
+          }
+          Write-Host "TWO_STEP_AND_DISK_SAFETY_GUARDS=PASS"
