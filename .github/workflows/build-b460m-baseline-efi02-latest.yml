@@ -55,6 +55,7 @@ jobs:
           fetch_kext acidanthera/IntelMausi 1.0.8 IntelMausi
           fetch_kext acidanthera/NVMeFix 1.1.3 NVMeFix
           fetch_kext acidanthera/RestrictEvents 1.1.6 RestrictEvents
+          fetch_kext USBToolBox/kext 1.2.0 USBToolBox
 
       - name: Update reference EFI binaries and kext bundles, preserve board ACPI and USB map
         shell: bash
@@ -83,7 +84,7 @@ jobs:
           specs={
             "Lilu":"Lilu","VirtualSMC":"VirtualSMC","WhateverGreen":"WhateverGreen",
             "AppleALC":"AppleALC","IntelMausi":"IntelMausi","NVMeFix":"NVMeFix",
-            "RestrictEvents":"RestrictEvents"
+            "RestrictEvents":"RestrictEvents","USBToolBox":"USBToolBox"
           }
           kroot=oc/"Kexts"
           for bundle,folder in specs.items():
@@ -99,6 +100,12 @@ jobs:
             if matches:
               if dst.exists(): shutil.rmtree(dst)
               shutil.copytree(matches[0],dst)
+          # Use the target machine's own previously validated 11-port USBToolBox map.
+          utb=Path("UTBMap.kext/Contents/Info.plist")
+          assert utb.is_file(), utb
+          mapdir=kroot/"UTBMap.kext"/"Contents"
+          mapdir.mkdir(parents=True,exist_ok=True)
+          shutil.copy2(utb,mapdir/"Info.plist")
           # Ensure config Kernel->Add entries match actual bundles and executables.
           p=oc/"config.plist"
           with p.open("rb") as f: c=plistlib.load(f)
@@ -119,7 +126,7 @@ jobs:
           by_name={x["BundlePath"].removesuffix(".kext"):x for x in entries}
           order=["Lilu","VirtualSMC","SMCProcessor","SMCSuperIO","WhateverGreen",
                  "AppleALC","IntelMausi","NVMeFix","RestrictEvents",
-                 "USBPorts","XHCI-unsupported"]
+                 "USBToolBox","UTBMap","XHCI-unsupported"]
           rebuilt=[]
           for name in order:
             bundle=kroot/(name+".kext")
@@ -140,6 +147,10 @@ jobs:
             n=old["BundlePath"].removesuffix(".kext")
             if n not in order and (kroot/(n+".kext")).is_dir():
               rebuilt.append(old)
+          # Keep legacy reference USB files for traceability but disable competing maps.
+          for item in rebuilt:
+            if item["BundlePath"] in ["USBPorts.kext","USBInjectAll.kext"]:
+              item["Enabled"]=False
           c["Kernel"]["Add"]=rebuilt
           # Keep board ACPI and USB map. Set UHD630 to Comet Lake headless mode.
           igpu=c["DeviceProperties"]["Add"].setdefault("PciRoot(0x0)/Pci(0x2,0x0)",{})
@@ -208,10 +219,11 @@ jobs:
           macOS target: Sequoia
           Hardware target: ASUS TUF GAMING B460M-PLUS (non-Wi-Fi), Comet Lake-S,
           XFX RX570 4GB, Intel I219-V, Realtek ALC S1200A.
-          Preserved from reference: ACPI tables, USBPorts.kext and board-specific quirks.
+          Preserved from reference: ACPI tables and board-specific quirks.
+          Integrated target's validated 11-port UTBMap; USBPorts and USBInjectAll retained but disabled.
           UHD630 AAPL,ig-platform-id changed to Comet Lake headless 0300913E for RX570 display output.
           Updated: OpenCore binaries, OpenRuntime, Lilu, VirtualSMC and companion sensors,
-          WhateverGreen, AppleALC, IntelMausi, NVMeFix, RestrictEvents.
+          WhateverGreen, AppleALC, IntelMausi, NVMeFix, RestrictEvents and USBToolBox.
           SMBIOS values are intentionally placeholders in this public build.
           Apply the user's three test identifiers locally before use.
           ROM remains zero placeholder; target NIC MAC is not embedded.
