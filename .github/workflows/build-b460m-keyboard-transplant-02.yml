@@ -38,9 +38,10 @@ jobs:
           echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  oc.zip" | sha256sum -c
           mkdir oc && unzip -q oc.zip -d oc
           driver="$(find oc -type f -path '*/X64/EFI/OC/Drivers/OpenUsbKbDxe.efi' -print -quit)"
-          validator="$(find oc -type f -name ocvalidate -print -quit)"
+          validator="$(find oc -type f -name ocvalidate.linux -print -quit)"
           test -n "$driver" && test -n "$validator"
           install -m 0644 "$driver" baseline/EFI/OC/Drivers/OpenUsbKbDxe.efi
+          chmod +x "$validator"
           install -m 0755 "$validator" ./ocvalidate
       - name: Apply mutually exclusive OpenUsbKbDxe input path
         shell: bash
