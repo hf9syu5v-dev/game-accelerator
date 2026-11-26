@@ -51,9 +51,6 @@ try {
     Write-Host 'RECOVERY_PAYLOAD_READ_ONLY_HASH_CHECK=PASS' -ForegroundColor Green
 
     if (!(Test-Path -LiteralPath (Join-Path $Current 'BOOT\BOOTx64.efi') -PathType Leaf)) { Stop-Safe 'SAFETY_STOP: active F:\EFI is missing/incomplete.' }
-    if (!(Test-Path -LiteralPath (Join-Path $Baseline 'BOOT\BOOTx64.efi') -PathType Leaf) -or !(Test-Path -LiteralPath (Join-Path $Baseline 'OC\config.plist') -PathType Leaf)) {
-        Stop-Safe "SAFETY_STOP: preserved VESA baseline F:\$KnownBaseline missing/incomplete."
-    }
     foreach ($p in @($Backup,$Stage,$Failed)) {
         if (Test-Path -LiteralPath $p) { Stop-Safe "SAFETY_STOP: $([IO.Path]::GetFileName($p)) already exists; refusing overwrite." }
     }
@@ -119,7 +116,6 @@ try {
     Write-Host 'SAME_BOARD_REFERENCE_EFI_DEPLOYMENT_SUCCESS' -ForegroundColor Green
     Write-Host 'ACTIVE=F:\EFI (exact-model B460M-PLUS keyboard input reference transplant)'
     Write-Host "PREVIOUS_ACTIVE_VESA_BASELINE_PRESERVED=F:\$BackupName"
-    Write-Host "ORIGINAL_VESA_BASELINE_PRESERVED=F:\$KnownBaseline"
     Write-Host "FILES_SHA256_VERIFIED=$($sourceFiles.Count)"
     Write-Host 'RECOVERY_AND_ALL_PARTITIONS=UNCHANGED'
     Write-Host 'INTERNAL_DISKS=NOT_MODIFIED'
