@@ -12,6 +12,8 @@ $EspGuid='c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 
 $BaseUrl='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/asus-b460-hackintosh-baseline-efi01/B460M-RX570-VESA-Diagnostic-EFI.zip'
 $BaseZipSha='fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf'
+$V03Url='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keyboard-transplant-03/B460M-Keyboard-Transplant-03-KeySupport-NoHotkeyPolling.zip'
+$V03ZipSha='1f58abf923271881bab162bebbe26b8d1c6ab6e75b778b6d48c6785b747dc69b'
 $Url='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keyboard-transplant-04-edk2-usbkbd/B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip'
 $ZipSha='e27a2ea40408f084ad01f87464930113fc45fe68352822a15f682a2f9a831299'
 $DriverSha='cda631d44699b37143f044a00ad679b8c49ca629d4106256d7ab082bc83c06f0'
@@ -34,6 +36,13 @@ function Get-Tree([string]$p){
     [pscustomobject]@{ Rel=$_.FullName.Substring($p.Length).TrimStart([char]92); Hash=(Sha $_.FullName) }
   } | Sort-Object Rel)
   return ,$files
+}
+function SameTree($a,$b){
+  if($a.Count -ne $b.Count){return $false}
+  for($i=0;$i -lt $a.Count;$i++){
+    if($a[$i].Rel -ne $b[$i].Rel -or $a[$i].Hash -ne $b[$i].Hash){return $false}
+  }
+  return $true
 }
 
 try {
@@ -60,21 +69,27 @@ try {
  foreach($p in @($Backup,$Stage,$Failed)){if(Test-Path $p){throw "SAFETY_STOP: refusing to overwrite $p"}}
  New-Item -ItemType Directory -Path $Work | Out-Null
 
- # Require exact, pinned VESA baseline before transplant. This deliberately rejects
- # EFI 01/02/03 or manually modified EFI; restore baseline first if this check fails.
+ # Accept only the exact pinned VESA baseline or the exact tested 03 package.
+ # This permits a direct 03 -> 04 update while rejecting unknown/manual EFI edits.
  $baseZip=Join-Path $Work 'baseline.zip'
  Invoke-WebRequest -Uri $BaseUrl -OutFile $baseZip -UseBasicParsing
  if((Sha $baseZip) -ne $BaseZipSha){throw 'BASELINE_ZIP_SHA256_MISMATCH; no changes made.'}
  $baseExpanded=Join-Path $Work 'baseline-expanded'
  Expand-Archive -LiteralPath $baseZip -DestinationPath $baseExpanded
  $baseEFI=Join-Path $baseExpanded 'EFI'
+
+ $v03Zip=Join-Path $Work 'candidate03.zip'
+ Invoke-WebRequest -Uri $V03Url -OutFile $v03Zip -UseBasicParsing
+ if((Sha $v03Zip) -ne $V03ZipSha){throw 'KNOWN_03_ZIP_SHA256_MISMATCH; no changes made.'}
+ $v03Expanded=Join-Path $Work 'candidate03-expanded'
+ Expand-Archive -LiteralPath $v03Zip -DestinationPath $v03Expanded
+ $v03EFI=Join-Path $v03Expanded 'EFI'
+
  $activeTree=Get-Tree $Current
- $baselineTree=Get-Tree $baseEFI
- if($activeTree.Count -ne $baselineTree.Count){throw 'SAFETY_STOP: active EFI is not byte-for-byte the pinned baseline. Restore baseline first.'}
- for($i=0;$i -lt $activeTree.Count;$i++){
-   if($activeTree[$i].Rel -ne $baselineTree[$i].Rel -or $activeTree[$i].Hash -ne $baselineTree[$i].Hash){
-     throw "SAFETY_STOP: active EFI differs from pinned baseline at $($activeTree[$i].Rel). Restore baseline first."
-   }
+ $isBaseline=SameTree $activeTree (Get-Tree $baseEFI)
+ $isVersion03=SameTree $activeTree (Get-Tree $v03EFI)
+ if(!$isBaseline -and !$isVersion03){
+   throw 'SAFETY_STOP: active EFI is neither the pinned baseline nor exact tested 03. Restore a known EFI first.'
  }
 
  # Download and authenticate candidate package and the separately built EDK II driver.
