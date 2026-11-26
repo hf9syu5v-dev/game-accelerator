@@ -81,7 +81,17 @@ jobs:
           if (!(Test-Path $efi -PathType Container) -or !(Test-Path $manifest -PathType Leaf)) { throw "Release archive layout mismatch." }
           $count = 0
           foreach ($line in Get-Content $manifest) {
-            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?EFI/(.+)$') { throw "Malformed manifest line: $line" }
+            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)) { throw "Malformed manifest line: $line" }
+            $relative = $Matches[2].Replace("/", "\")
+            $file = Join-Path $efi $relative
+            if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
+            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($hash -ne $Matches[1].ToLowerInvariant()) { throw "Manifest hash mismatch: $relative" }
+            $count++
+          }
+          if ($count -lt 10) { throw "Manifest file count too small: $count" }
+          Write-Host "EFI02_RELEASE_PACKAGE_AND_MANIFEST=PASS files=$count"
+) { throw "Malformed manifest line: $line" }
             $relative = $Matches[2].Replace("/", "\")
             $file = Join-Path $efi $relative
             if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
