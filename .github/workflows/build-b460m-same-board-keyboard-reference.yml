@@ -1,0 +1,188 @@
+name: Build same-board B460M keyboard-reference EFI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/build-b460m-same-board-keyboard-reference.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: b460m-same-board-keyboard-reference
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify the known-good RX570 VESA baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip" \
+            -o baseline.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  baseline.zip" | sha256sum --check
+          mkdir baseline
+          unzip -q baseline.zip -d baseline
+          test -s baseline/EFI/BOOT/BOOTx64.efi
+          test -s baseline/EFI/OC/OpenCore.efi
+          test -s baseline/EFI/OC/config.plist
+          cp baseline.zip B460M-RX570-VESA-BASELINE-UNCHANGED.zip
+
+      - name: Fetch the exact-model non-WiFi reference config
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://raw.githubusercontent.com/Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH/f038b267ba00b862ea5c5cc289239286bbf9df66/EFI/OC/config.plist" \
+            -o reference-config.plist
+          test -s reference-config.plist
+          sha256sum reference-config.plist
+
+      - name: Transplant only the keyboard-related reference settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          base = Path("baseline/EFI/OC/config.plist")
+          ref = Path("reference-config.plist")
+          cfg = plistlib.loads(base.read_bytes())
+          src = plistlib.loads(ref.read_bytes())
+
+          # Copy only keyboard/input policy. Preserve the target EFI's pointer,
+          # USB map, ACPI, kexts, drivers, graphics, SMBIOS and all other settings.
+          input_keys = (
+              "KeyFiltering", "KeyForgetThreshold", "KeySupport",
+              "KeySupportMode", "KeySwap", "TimerResolution"
+          )
+          apple_keys = (
+              "AppleEvent", "CustomDelays", "GraphicsInputMirroring",
+              "KeyInitialDelay", "KeySubsequentDelay"
+          )
+          for key in input_keys:
+              assert key in src["UEFI"]["Input"], f"Reference missing UEFI.Input.{key}"
+              cfg["UEFI"]["Input"][key] = src["UEFI"]["Input"][key]
+          for key in apple_keys:
+              assert key in src["UEFI"]["AppleInput"], f"Reference missing UEFI.AppleInput.{key}"
+              cfg["UEFI"]["AppleInput"][key] = src["UEFI"]["AppleInput"][key]
+          cfg["Misc"]["Boot"]["PollAppleHotKeys"] = src["Misc"]["Boot"]["PollAppleHotKeys"]
+
+          assert cfg["UEFI"]["Input"]["KeySupport"] is True
+          assert cfg["UEFI"]["Input"]["KeySupportMode"] == "Auto"
+          assert cfg["UEFI"]["AppleInput"]["AppleEvent"] == "Builtin"
+          assert cfg["UEFI"]["AppleInput"]["GraphicsInputMirroring"] is True
+          assert cfg["Misc"]["Boot"]["PollAppleHotKeys"] is True
+
+          # No alternative keyboard driver is introduced in this profile.
+          assert not any(d.get("Path") in ("OpenUsbKbDxe.efi", "Ps2KeyboardDxe.efi")
+                         and d.get("Enabled") for d in cfg["UEFI"]["Drivers"])
+
+          base.write_bytes(plistlib.dumps(cfg, fmt=plistlib.FMT_XML, sort_keys=False))
+          print("REFERENCE_INPUT_PROFILE=PASS")
+          for key in input_keys:
+              print(f"UEFI.Input.{key}={cfg['UEFI']['Input'][key]}")
+          for key in apple_keys:
+              print(f"UEFI.AppleInput.{key}={cfg['UEFI']['AppleInput'][key]}")
+          print("Misc.Boot.PollAppleHotKeys=True")
+          print("POINTER_USB_ACPI_KEXT_GPU_SMBIOS_AND_OTHER_SETTINGS=PRESERVED")
+          PY
+
+      - name: Validate plist, exact change scope and OpenCore config
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.8-DEBUG.zip
+          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | sha256sum --check
+          mkdir /tmp/oc
+          unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
+          validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
+          test -n "$validator"
+          chmod +x "$validator"
+          "$validator" baseline/EFI/OC/config.plist
+          python3 - <<'PY'
+          import plistlib
+          from pathlib import Path
+          c=plistlib.loads(Path("baseline/EFI/OC/config.plist").read_bytes())
+          assert c["UEFI"]["Input"]["KeySupport"] is True
+          assert c["UEFI"]["Input"]["KeySupportMode"] == "Auto"
+          assert c["UEFI"]["AppleInput"]["AppleEvent"] == "Builtin"
+          assert c["UEFI"]["AppleInput"]["GraphicsInputMirroring"] is True
+          assert c["Misc"]["Boot"]["PollAppleHotKeys"] is True
+          assert c["PlatformInfo"]["Generic"]["SystemProductName"] == "iMac20,1"
+          assert "-radvesa" in c["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"].split()
+          for d in c["UEFI"]["Drivers"]:
+              if d.get("Enabled"): assert (Path("baseline/EFI/OC/Drivers")/d["Path"]).is_file(), d["Path"]
+          for a in c["ACPI"]["Add"]:
+              if a.get("Enabled"): assert (Path("baseline/EFI/OC/ACPI")/a["Path"]).is_file(), a["Path"]
+          for k in c["Kernel"]["Add"]:
+              if k.get("Enabled"): assert (Path("baseline/EFI/OC/Kexts")/k["BundlePath"]).exists(), k["BundlePath"]
+          print("CONFIG_AND_ALL_ENABLED_PATHS=PASS")
+          PY
+
+      - name: Package the reference-input EFI and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > baseline/SAME-BOARD-KEYBOARD-REFERENCE-REPORT.txt <<'EOF'
+          ASUS TUF GAMING B460M-PLUS same-model keyboard reference transplant
+
+          Baseline:
+            Exact previously deployed RX570 VESA EFI release.
+            SHA256: fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf
+
+          Reference:
+            Stick-Study/ASUS-TUF-GAMING-B460M-PLUS-HACKINTOSH
+            Exact non-WiFi motherboard model.
+            Pinned commit: f038b267ba00b862ea5c5cc289239286bbf9df66
+
+          Transplanted:
+            UEFI.Input keyboard policy fields from the reference
+            UEFI.AppleInput AppleEvent, GraphicsInputMirroring and key delays
+            Misc.Boot.PollAppleHotKeys
+
+          Intentionally preserved:
+            Pointer configuration, USB map, ACPI, kexts, drivers, graphics,
+            boot arguments, SMBIOS and every unrelated target EFI setting.
+
+          This is a hardware test candidate, not a claim of keyboard success.
+          Restore the unchanged VESA baseline if the candidate does not work.
+          EOF
+          (
+            cd baseline
+            find EFI -type f -print0 | sort -z | xargs -0 sha256sum > EFI-MANIFEST.sha256
+            zip -qr ../B460M-Same-Board-Keyboard-Reference-EFI.zip EFI SAME-BOARD-KEYBOARD-REFERENCE-REPORT.txt EFI-MANIFEST.sha256
+          )
+          unzip -t B460M-Same-Board-Keyboard-Reference-EFI.zip
+          sha256sum B460M-RX570-VESA-BASELINE-UNCHANGED.zip B460M-Same-Board-Keyboard-Reference-EFI.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Same-Board-Keyboard-Reference-EFI
+          path: |
+            B460M-RX570-VESA-BASELINE-UNCHANGED.zip
+            B460M-Same-Board-Keyboard-Reference-EFI.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish the same-board reference candidate
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: b460m-same-board-keyboard-reference
+          name: B460M same-board keyboard-reference EFI
+          target_commitish: ${{ github.sha }}
+          files: B460M-Same-Board-Keyboard-Reference-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
