@@ -87,6 +87,10 @@ jobs:
           assert not any(d.get("Path") in ("OpenUsbKbDxe.efi", "Ps2KeyboardDxe.efi")
                          and d.get("Enabled") for d in cfg["UEFI"]["Drivers"])
 
+          # OpenCore 1.0.8 UEFI driver schema defaults required by ocvalidate.
+          for driver in cfg["UEFI"]["Drivers"]:
+              driver.setdefault("Comment", "")
+              driver.setdefault("HideVerbose", False)
           base.write_bytes(plistlib.dumps(cfg, fmt=plistlib.FMT_XML, sort_keys=False))
           print("REFERENCE_INPUT_PROFILE=PASS")
           for key in input_keys:
