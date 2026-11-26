@@ -56,6 +56,11 @@ elif mode == "verify":
             actual = str(uuid.UUID(str(actual))).upper()
         if actual != value:
             raise SystemExit("SMBIOS verification failed for " + key)
+    boot_args = data.get("NVRAM", {}).get("Add", {}).get("7C436110-AB2A-4BBB-A880-FE41995C9F82", {}).get("boot-args", "")
+    if isinstance(boot_args, bytes):
+        boot_args = boot_args.decode("utf-8", "ignore")
+    if "-radvesa" in str(boot_args) or "-wegnoigpu" in str(boot_args):
+        raise SystemExit("Obsolete graphics-isolation boot argument found")
     print("SMBIOS_INJECTION_VERIFIED")
 else:
     raise SystemExit("Unknown helper mode")
