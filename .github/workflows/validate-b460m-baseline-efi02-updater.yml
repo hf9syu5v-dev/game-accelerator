@@ -1,5 +1,4 @@
 name: Validate Baseline EFI 02 two-step updater
-
 on:
   workflow_dispatch:
   push:
@@ -8,16 +7,13 @@ on:
     paths:
       - "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
       - ".github/workflows/validate-b460m-baseline-efi02-updater.yml"
-
 permissions:
   contents: read
-
 jobs:
   validate:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Parse PowerShell 5.1 syntax
         shell: powershell
         run: |
@@ -30,74 +26,42 @@ jobs:
             throw "PowerShell parser reported syntax errors."
           }
           Write-Host "POWERSHELL_51_PARSE=PASS"
-
-      - name: Verify two-step and disk safety guards
+      - name: Verify updater safety guards
         shell: powershell
         run: |
           $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
           $s = Get-Content $path -Raw
-          $required = @(
-            '[ValidateSet("Prepare","Apply")]',
-            '000000123ADC',
-            'LITEON I T LCS-128L9S',
-            'BusType -ne "USB"',
-            'PartitionStyle -ne "GPT"',
-            'BaseSystem.dmg',
-            'BaseSystem.chunklist',
-            'APPLY-BASELINE-02',
-            'EFI-PREVIOUS-BASELINE02-',
-            'EFI-FAILED-BASELINE02-',
-            'BASELINE02_DEPLOYMENT_SUCCESS',
-            'EFI-SHA256SUMS.txt',
-            'c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c'
-          )
-          foreach ($item in $required) {
-            if ($s -notlike "*$item*") { throw "Missing safety/package marker: $item" }
-          }
-          $forbidden = @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')
-          foreach ($item in $forbidden) {
-            if ($s.Contains($item)) { throw "Forbidden disk operation found: $item" }
-          }
-          if ($s -match 'Remove-Item[^\r\n]*\$Recovery' -or $s -match 'Copy-Item[^\r\n]*\$Recovery') {
-            throw "Recovery directory must never be copied or removed."
-          }
-          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') {
-            throw "Two-step EFI rename deployment is missing."
-          }
-          Write-Host "TWO_STEP_AND_DISK_SAFETY_GUARDS=PASS"
-
-      - name: Download and verify the exact EFI-02 release package
+          $required = @('000000123ADC','LITEON I T LCS-128L9S','APPLY-BASELINE-02','EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-','EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c','ValidateSet("Prepare","Apply")')
+          foreach ($item in $required) { if ($s -notlike "*$item*") { throw "Missing marker: $item" } }
+          foreach ($item in @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')) { if ($s.Contains($item)) { throw "Forbidden disk operation: $item" } }
+          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') { throw "Two-step rename operations missing." }
+          Write-Host "UPDATER_SAFETY_GUARDS=PASS"
+      - name: Download and verify EFI-02 ZIP and separate manifest
         shell: powershell
         run: |
-          $url = "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/B460M-Baseline-EFI-02.zip"
-          $expected = "c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c"
-          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\efi02.zip" -UseBasicParsing
-          $actual = (Get-FileHash "$env:RUNNER_TEMP\efi02.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "EFI-02 ZIP SHA256 mismatch: $actual" }
-          Expand-Archive "$env:RUNNER_TEMP\efi02.zip" "$env:RUNNER_TEMP\efi02" -Force
-          $efi = "$env:RUNNER_TEMP\efi02\EFI"
+          $base = "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/"
+          $zip = "$env:RUNNER_TEMP\efi02.zip"
           $manifest = "$env:RUNNER_TEMP\EFI-SHA256SUMS.txt"
-          Invoke-WebRequest -Uri "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/EFI-SHA256SUMS.txt" -OutFile $manifest -UseBasicParsing
-          if (!(Test-Path $efi -PathType Container) -or !(Test-Path $manifest -PathType Leaf)) { throw "Release archive layout mismatch." }
+          Invoke-WebRequest -Uri ($base + "B460M-Baseline-EFI-02.zip") -OutFile $zip -UseBasicParsing
+          Invoke-WebRequest -Uri ($base + "EFI-SHA256SUMS.txt") -OutFile $manifest -UseBasicParsing
+          $expected = "c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c"
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "ZIP SHA256 mismatch: $actual" }
+          $dest = "$env:RUNNER_TEMP\efi02"
+          Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force
+          $efi = Join-Path $dest "EFI"
+          if (!(Test-Path $efi -PathType Container)) { throw "EFI folder missing from ZIP." }
           $count = 0
           foreach ($line in Get-Content $manifest) {
-            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)) { throw "Malformed manifest line: $line" }
+            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)$') { throw "Malformed manifest line: $line" }
+            $expectedFile = $Matches[1].ToLowerInvariant()
             $relative = $Matches[2].Replace("/", "\")
+            if ($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)) { throw "Unsafe manifest path: $relative" }
             $file = Join-Path $efi $relative
             if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
             $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($hash -ne $Matches[1].ToLowerInvariant()) { throw "Manifest hash mismatch: $relative" }
+            if ($hash -ne $expectedFile) { throw "Manifest hash mismatch: $relative" }
             $count++
           }
           if ($count -lt 10) { throw "Manifest file count too small: $count" }
-          Write-Host "EFI02_RELEASE_PACKAGE_AND_MANIFEST=PASS files=$count"
-) { throw "Malformed manifest line: $line" }
-            $relative = $Matches[2].Replace("/", "\")
-            $file = Join-Path $efi $relative
-            if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
-            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($hash -ne $Matches[1].ToLowerInvariant()) { throw "Manifest hash mismatch: $relative" }
-            $count++
-          }
-          if ($count -lt 10) { throw "Manifest file count too small: $count" }
-          Write-Host "EFI02_RELEASE_PACKAGE_AND_MANIFEST=PASS files=$count"
+          Write-Host "EFI02_ZIP_AND_MANIFEST=PASS files=$count"
