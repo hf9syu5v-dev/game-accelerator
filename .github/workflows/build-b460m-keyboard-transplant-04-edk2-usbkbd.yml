@@ -32,7 +32,7 @@ jobs:
       - name: Build upstream TianoCore EDK II UsbKbDxe (X64)
         shell: bash
         run: |
-          set -euo pipefail
+          set -eo pipefail
           sudo apt-get update
           sudo apt-get install -y build-essential uuid-dev nasm iasl python3 python3-distutils
           git clone https://github.com/tianocore/edk2.git edk2
