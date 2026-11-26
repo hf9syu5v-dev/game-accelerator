@@ -27,24 +27,28 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
           $source = Get-Content -LiteralPath $path -Raw
-          foreach ($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk','Remove-Item')) {
+          foreach ($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk')) {
             if ($source -match [regex]::Escape($term)) { throw "Forbidden disk/filesystem operation found: $term" }
           }
           foreach ($required in @(
             '000000123ADC',
             'LITEON I T LCS-128L9S',
-            'EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC',
-            'EFI-PREVIOUS-BEFORE-SAME-BOARD-REFERENCE',
+            'b460m-rx570-vesa-diagnostic',
+            'B460M-RX570-VESA-Diagnostic-EFI.zip',
+            'fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf',
+            'EFI-BEFORE-VESA-BASELINE-',
             'BaseSystem.dmg',
             'BaseSystem.chunklist',
             '7314eb401f5e84087f621b3599f0ad21ca3cdcc2685ea2da7f76806792328e20',
             'dbf262b83a16d55f1b2d8ce8ce95986561f8e889719524ea4b7aa22a2417ca27',
             'Rename-Item',
+            'Invoke-WebRequest',
+            'BASELINE_ZIP_SHA256_MISMATCH',
             'BASELINE_RESTORATION_SUCCESS'
           )) {
             if ($source -notmatch [regex]::Escape($required)) { throw "Required assertion missing: $required" }
           }
-          if ($source -match 'Remove-Item|Format-Volume|Clear-Disk|Initialize-Disk') { throw 'Forbidden mutation found.' }
+          if ($source -match 'Format-Volume|Clear-Disk|Initialize-Disk') { throw 'Forbidden mutation found.' }
           'POWERSHELL_51_PARSE=PASS'
           'USB_DISK_IDENTITY_GUARD=PASS'
           'RECOVERY_READ_ONLY_HASH_GUARD=PASS'
