@@ -57,7 +57,173 @@ function Assert-Manifest {
  $n=0
  foreach($line in Get-Content -LiteralPath $ManifestPath){
   if([string]::IsNullOrWhiteSpace($line)){continue}
-  if($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)){throw "Malformed manifest line: $line"}
+  if($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)throw "Malformed manifest line: $line"}
+  $expected=$Matches[1].ToLowerInvariant(); $relative=$Matches[2].Replace("/","\")
+  if($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)){throw "Unsafe manifest path."}
+  $file=Join-Path $EfiRoot $relative
+  if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw "Manifest file missing: $relative"}
+  if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected){throw "Manifest SHA256 mismatch: $relative"}
+  $n++
+ }
+ if($n -lt 10){throw "Manifest contains too few files: $n"}
+ Write-Host "EFI manifest verified: $n files." -ForegroundColor Green
+}
+function Assert-StagePath {
+ param([string]$Path)
+ $rootFull=[IO.Path]::GetFullPath($Root); $pathFull=[IO.Path]::GetFullPath($Path)
+ if(-not $pathFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){throw "Stage is outside USB root."}
+ if((Split-Path -Leaf $pathFull) -notmatch '^EFI-BASELINE02-STAGING-[0-9a-f]{32}$'){throw "Unexpected stage directory name."}
+ if((Get-Item -LiteralPath $pathFull -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Stage is a reparse point."}
+}
+Assert-UsbIdentity
+Assert-RecoveryReadOnly
+
+if($Step -eq "Prepare"){
+ if(-not(Test-Path -LiteralPath $ActiveEfi -PathType Container)){throw "Current EFI directory missing."}
+ Assert-EfiFolder -Path $ActiveEfi
+ $work=Join-Path $env:TEMP ("B460M-Baseline02-"+[guid]::NewGuid().ToString("N"))
+ $extract=Join-Path $work "extract"; $zip=Join-Path $work "B460M-Baseline-EFI-02.zip"
+ $stage=Join-Path $Root ("EFI-BASELINE02-STAGING-"+[guid]::NewGuid().ToString("N"))
+ New-Item -ItemType Directory -Path $work | Out-Null
+ try{
+  Invoke-WebRequest -Uri $BaseUrl -OutFile $zip -UseBasicParsing
+  $hash=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($hash -ne $ExpectedZipSha256){throw "EFI-02 ZIP SHA256 mismatch: $hash"}
+  Expand-Archive -LiteralPath $zip -DestinationPath $extract
+  $source=Join-Path $extract "EFI"; $manifest=Join-Path $work "EFI-SHA256SUMS.txt"
+  Invoke-WebRequest -Uri "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/EFI-SHA256SUMS.txt" -OutFile $manifest -UseBasicParsing
+  if(-not(Test-Path -LiteralPath $source -PathType Container)){throw "ZIP has no EFI directory at root."}
+  Assert-Manifest -ManifestPath $manifest -EfiRoot $source
+  Assert-EfiFolder -Path $source -ForCandidate
+  New-Item -ItemType Directory -Path $stage | Out-Null
+  Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $stage -Recurse
+  Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
+  Assert-EfiFolder -Path $stage -ForCandidate
+  [ordered]@{Version=2;DriveLetter=$DriveLetter;StagePath=$stage;ZipSha256=$ExpectedZipSha256;PreparedAt=(Get-Date).ToString("o");WorkPath=$work;ManifestPath=$manifest} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StatePath -Encoding UTF8
+  Write-Host "PREPARE_SUCCESS" -ForegroundColor Green
+  Write-Host "Staging path: $stage"
+  Write-Host "Active EFI has NOT been changed."
+  Write-Host "After checking this result, run the same script with -Step Apply."
+ }catch{if(Test-Path -LiteralPath $stage){Write-Warning "Incomplete stage retained: $stage"};throw}
+}
+elseif($Step -eq "Apply"){
+ if(-not(Test-Path -LiteralPath $StatePath -PathType Leaf)){throw "No prepared state. Run Prepare first."}
+ $state=Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
+ if($state.Version -ne 2 -or $state.DriveLetter -ne $DriveLetter -or $state.ZipSha256 -ne $ExpectedZipSha256){throw "Prepared state/package mismatch. Run Prepare again."}
+ $stage=[string]$state.StagePath; Assert-StagePath -Path $stage
+ if(-not(Test-Path -LiteralPath $stage -PathType Container)){throw "Staging directory missing."}
+ $manifest=[string]$state.ManifestPath
+ if(-not $manifest.StartsWith([string]$state.WorkPath,[StringComparison]::OrdinalIgnoreCase)){throw "Manifest path is outside prepared work directory."}
+ Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
+ Assert-EfiFolder -Path $stage -ForCandidate
+ if(-not(Test-Path -LiteralPath $ActiveEfi -PathType Container)){throw "Active EFI directory missing."}
+ $backup=Join-Path $Root ("EFI-PREVIOUS-BASELINE02-"+[guid]::NewGuid().ToString("N"))
+ $failed=Join-Path $Root ("EFI-FAILED-BASELINE02-"+[guid]::NewGuid().ToString("N"))
+ Write-Host "Only $ActiveEfi will be replaced. Backup: $backup"
+ Write-Host "Recovery and Recovery staging directories, E:, and internal disks are not targets."
+ $confirm=Read-Host "Type APPLY-BASELINE-02 to continue"
+ if($confirm -cne "APPLY-BASELINE-02"){throw "Cancelled. No EFI changes made."}
+ $oldMoved=$false; $newMoved=$false
+ try{
+  Rename-Item -LiteralPath $ActiveEfi -NewName (Split-Path $backup -Leaf); $oldMoved=$true
+  Rename-Item -LiteralPath $stage -NewName "EFI"; $newMoved=$true
+  Assert-EfiFolder -Path $ActiveEfi -ForCandidate
+  Assert-Manifest -ManifestPath $manifest -EfiRoot $ActiveEfi
+  Assert-RecoveryReadOnly
+  Write-Host "BASELINE02_DEPLOYMENT_SUCCESS" -ForegroundColor Green
+  Write-Host "Previous EFI backup retained: $backup"
+  Remove-Item -LiteralPath $StatePath -Force
+ }catch{
+  $failure=$_
+  if($newMoved -and (Test-Path -LiteralPath $ActiveEfi)){Rename-Item -LiteralPath $ActiveEfi -NewName (Split-Path $failed -Leaf);Write-Warning "Failed candidate retained: $failed"}
+  if($oldMoved -and (Test-Path -LiteralPath $backup)){Rename-Item -LiteralPath $backup -NewName "EFI";Write-Warning "Previous EFI restored."}
+  throw $failure
+ }
+}
+){throw "Malformed manifest line: $line"}
+  $expected=$Matches[1].ToLowerInvariant(); $relative=$Matches[2].Replace("/","\")
+  if($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)){throw "Unsafe manifest path."}
+  $file=Join-Path $EfiRoot $relative
+  if(-not(Test-Path -LiteralPath $file -PathType Leaf)){throw "Manifest file missing: $relative"}
+  if((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected){throw "Manifest SHA256 mismatch: $relative"}
+  $n++
+ }
+ if($n -lt 10){throw "Manifest contains too few files: $n"}
+ Write-Host "EFI manifest verified: $n files." -ForegroundColor Green
+}
+function Assert-StagePath {
+ param([string]$Path)
+ $rootFull=[IO.Path]::GetFullPath($Root); $pathFull=[IO.Path]::GetFullPath($Path)
+ if(-not $pathFull.StartsWith($rootFull,[StringComparison]::OrdinalIgnoreCase)){throw "Stage is outside USB root."}
+ if((Split-Path -Leaf $pathFull) -notmatch '^EFI-BASELINE02-STAGING-[0-9a-f]{32}$'){throw "Unexpected stage directory name."}
+ if((Get-Item -LiteralPath $pathFull -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw "Stage is a reparse point."}
+}
+Assert-UsbIdentity
+Assert-RecoveryReadOnly
+
+if($Step -eq "Prepare"){
+ if(-not(Test-Path -LiteralPath $ActiveEfi -PathType Container)){throw "Current EFI directory missing."}
+ Assert-EfiFolder -Path $ActiveEfi
+ $work=Join-Path $env:TEMP ("B460M-Baseline02-"+[guid]::NewGuid().ToString("N"))
+ $extract=Join-Path $work "extract"; $zip=Join-Path $work "B460M-Baseline-EFI-02.zip"
+ $stage=Join-Path $Root ("EFI-BASELINE02-STAGING-"+[guid]::NewGuid().ToString("N"))
+ New-Item -ItemType Directory -Path $work | Out-Null
+ try{
+  Invoke-WebRequest -Uri $BaseUrl -OutFile $zip -UseBasicParsing
+  $hash=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($hash -ne $ExpectedZipSha256){throw "EFI-02 ZIP SHA256 mismatch: $hash"}
+  Expand-Archive -LiteralPath $zip -DestinationPath $extract
+  $source=Join-Path $extract "EFI"; $manifest=Join-Path $work "EFI-SHA256SUMS.txt"
+  Invoke-WebRequest -Uri "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/EFI-SHA256SUMS.txt" -OutFile $manifest -UseBasicParsing
+  if(-not(Test-Path -LiteralPath $source -PathType Container)){throw "ZIP has no EFI directory at root."}
+  Assert-Manifest -ManifestPath $manifest -EfiRoot $source
+  Assert-EfiFolder -Path $source -ForCandidate
+  New-Item -ItemType Directory -Path $stage | Out-Null
+  Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $stage -Recurse
+  Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
+  Assert-EfiFolder -Path $stage -ForCandidate
+  [ordered]@{Version=2;DriveLetter=$DriveLetter;StagePath=$stage;ZipSha256=$ExpectedZipSha256;PreparedAt=(Get-Date).ToString("o");WorkPath=$work;ManifestPath=$manifest} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StatePath -Encoding UTF8
+  Write-Host "PREPARE_SUCCESS" -ForegroundColor Green
+  Write-Host "Staging path: $stage"
+  Write-Host "Active EFI has NOT been changed."
+  Write-Host "After checking this result, run the same script with -Step Apply."
+ }catch{if(Test-Path -LiteralPath $stage){Write-Warning "Incomplete stage retained: $stage"};throw}
+}
+elseif($Step -eq "Apply"){
+ if(-not(Test-Path -LiteralPath $StatePath -PathType Leaf)){throw "No prepared state. Run Prepare first."}
+ $state=Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
+ if($state.Version -ne 2 -or $state.DriveLetter -ne $DriveLetter -or $state.ZipSha256 -ne $ExpectedZipSha256){throw "Prepared state/package mismatch. Run Prepare again."}
+ $stage=[string]$state.StagePath; Assert-StagePath -Path $stage
+ if(-not(Test-Path -LiteralPath $stage -PathType Container)){throw "Staging directory missing."}
+ $manifest=[string]$state.ManifestPath
+ if(-not $manifest.StartsWith([string]$state.WorkPath,[StringComparison]::OrdinalIgnoreCase)){throw "Manifest path is outside prepared work directory."}
+ Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
+ Assert-EfiFolder -Path $stage -ForCandidate
+ if(-not(Test-Path -LiteralPath $ActiveEfi -PathType Container)){throw "Active EFI directory missing."}
+ $backup=Join-Path $Root ("EFI-PREVIOUS-BASELINE02-"+[guid]::NewGuid().ToString("N"))
+ $failed=Join-Path $Root ("EFI-FAILED-BASELINE02-"+[guid]::NewGuid().ToString("N"))
+ Write-Host "Only $ActiveEfi will be replaced. Backup: $backup"
+ Write-Host "Recovery and Recovery staging directories, E:, and internal disks are not targets."
+ $confirm=Read-Host "Type APPLY-BASELINE-02 to continue"
+ if($confirm -cne "APPLY-BASELINE-02"){throw "Cancelled. No EFI changes made."}
+ $oldMoved=$false; $newMoved=$false
+ try{
+  Rename-Item -LiteralPath $ActiveEfi -NewName (Split-Path $backup -Leaf); $oldMoved=$true
+  Rename-Item -LiteralPath $stage -NewName "EFI"; $newMoved=$true
+  Assert-EfiFolder -Path $ActiveEfi -ForCandidate
+  Assert-Manifest -ManifestPath $manifest -EfiRoot $ActiveEfi
+  Assert-RecoveryReadOnly
+  Write-Host "BASELINE02_DEPLOYMENT_SUCCESS" -ForegroundColor Green
+  Write-Host "Previous EFI backup retained: $backup"
+  Remove-Item -LiteralPath $StatePath -Force
+ }catch{
+  $failure=$_
+  if($newMoved -and (Test-Path -LiteralPath $ActiveEfi)){Rename-Item -LiteralPath $ActiveEfi -NewName (Split-Path $failed -Leaf);Write-Warning "Failed candidate retained: $failed"}
+  if($oldMoved -and (Test-Path -LiteralPath $backup)){Rename-Item -LiteralPath $backup -NewName "EFI";Write-Warning "Previous EFI restored."}
+  throw $failure
+ }
+}
+){throw "Malformed manifest line: $line"}
   $expected=$Matches[1].ToLowerInvariant(); $relative=$Matches[2].Replace("/","\")
   if($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)){throw "Unsafe manifest path."}
   $file=Join-Path $EfiRoot $relative
