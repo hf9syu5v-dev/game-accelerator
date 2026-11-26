@@ -35,9 +35,12 @@ jobs:
           set -eo pipefail
           sudo apt-get update
           sudo apt-get install -y build-essential uuid-dev nasm iasl python3 python3-distutils
-          git clone https://github.com/tianocore/edk2.git edk2
-          git -C edk2 checkout --detach 3e722403cd16388a0e4044e705a2b34c841d76ca
+          mkdir edk2
           cd edk2
+          git init
+          git remote add origin https://github.com/tianocore/edk2.git
+          git fetch --depth 1 origin 3e722403cd16388a0e4044e705a2b34c841d76ca
+          git checkout --detach FETCH_HEAD
           git submodule update --init --depth 1 BaseTools/Source/C/BrotliCompress/brotli MdePkg/Library/MipiSysTLib/mipisyst MdeModulePkg/Library/BrotliCustomDecompressLib/brotli
           make -C BaseTools
           export WORKSPACE="$PWD"
