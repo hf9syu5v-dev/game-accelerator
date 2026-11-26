@@ -79,8 +79,12 @@ try {
  }
 
  # Download and authenticate candidate package and the separately built EDK II driver.
- $zip=Join-Path $Work 'candidate04.zip'
- Invoke-WebRequest -Uri $Url -OutFile $zip -UseBasicParsing
+ $artifactZip=Join-Path $Work 'actions-artifact.zip'
+ Invoke-WebRequest -Uri $ArtifactUrl -OutFile $artifactZip -UseBasicParsing
+ $artifactExpanded=Join-Path $Work 'artifact-expanded'
+ Expand-Archive -LiteralPath $artifactZip -DestinationPath $artifactExpanded
+ $zip=Join-Path $artifactExpanded 'B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip'
+ if(!(Test-Path $zip -PathType Leaf)){throw 'CANDIDATE_ZIP_NOT_FOUND_INSIDE_ACTIONS_ARTIFACT.'}
  if((Sha $zip) -ne $ZipSha){throw 'CANDIDATE_ZIP_SHA256_MISMATCH; no changes made.'}
  $expanded=Join-Path $Work 'candidate-expanded'
  Expand-Archive -LiteralPath $zip -DestinationPath $expanded
