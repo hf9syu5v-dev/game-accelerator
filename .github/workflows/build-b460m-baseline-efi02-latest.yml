@@ -196,6 +196,14 @@ jobs:
               with (b/"Contents/Info.plist").open("rb") as f: info=plistlib.load(f)
               assert item["PlistPath"]=="Contents/Info.plist"
               if item["ExecutablePath"]: assert (b/item["ExecutablePath"]).is_file(),item
+          igpu=c["DeviceProperties"]["Add"]["PciRoot(0x0)/Pci(0x2,0x0)"]
+          assert igpu["AAPL,ig-platform-id"]==bytes.fromhex("0300913E")
+          utb=plistlib.loads((oc/"Kexts/UTBMap.kext/Contents/Info.plist").read_bytes())
+          ports=utb["IOKitPersonalities"]["XHC"]["IOProviderMergeProperties"]["ports"]
+          assert len(ports)==11, len(ports)
+          bypath={x["BundlePath"]:x for x in c["Kernel"]["Add"]}
+          assert bypath["USBPorts.kext"]["Enabled"] is False
+          assert bypath["USBInjectAll.kext"]["Enabled"] is False
           # Never ship a reference machine's serial values.
           g=c["PlatformInfo"]["Generic"]
           assert g["SystemProductName"]=="iMac20,1"
