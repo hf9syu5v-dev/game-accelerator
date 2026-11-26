@@ -1,4 +1,4 @@
-name: Validate same-board keyboard-reference EFI deployer
+name: Validate repeatable same-board keyboard-reference EFI deployer
 
 on:
   workflow_dispatch:
