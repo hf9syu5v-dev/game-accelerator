@@ -51,14 +51,19 @@ function Assert-RecoveryReadOnly {
 }
 
 function Assert-EfiFolder {
-    param([Parameter(Mandatory=$true)][string]$Path)
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [switch]$ForCandidate
+    )
     foreach ($relative in @("BOOT\BOOTx64.efi","OC\OpenCore.efi","OC\config.plist","OC\Drivers\OpenRuntime.efi","OC\Drivers\HfsPlus.efi")) {
         $item = Join-Path $Path $relative
         if (-not (Test-Path -LiteralPath $item -PathType Leaf)) { throw "EFI validation failed: missing $relative in $Path" }
     }
     $config = Get-Content -LiteralPath (Join-Path $Path "OC\config.plist") -Raw
-    if ($config -match "-radvesa" -or $config -match "-wegnoigpu") { throw "EFI validation failed: graphics isolation arguments remain." }
-    if ($config -notmatch "iMac20,1") { throw "EFI validation failed: iMac20,1 SMBIOS marker absent." }
+    if ($ForCandidate) {
+        if ($config -match "-radvesa" -or $config -match "-wegnoigpu") { throw "EFI validation failed: graphics isolation arguments remain." }
+        if ($config -notmatch "iMac20,1") { throw "EFI validation failed: iMac20,1 SMBIOS marker absent." }
+    }
 }
 
 function Assert-Manifest {
@@ -105,12 +110,12 @@ if ($Step -eq "Prepare") {
         $manifest = Join-Path $extract "EFI-MANIFEST.sha256"
         if (-not (Test-Path -LiteralPath $efiSource -PathType Container)) { throw "ZIP does not contain EFI directory." }
         Assert-Manifest -ManifestPath $manifest -EfiRoot $efiSource
-        Assert-EfiFolder -Path $efiSource
+        Assert-EfiFolder -Path $efiSource -ForCandidate
 
         New-Item -ItemType Directory -Path $stage | Out-Null
         Get-ChildItem -LiteralPath $efiSource -Force | Copy-Item -Destination $stage -Recurse -Force
         Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
-        Assert-EfiFolder -Path $stage
+        Assert-EfiFolder -Path $stage -ForCandidate -ForCandidate
 
         $state = [ordered]@{
             DriveLetter = $DriveLetter
@@ -160,7 +165,7 @@ elseif ($Step -eq "Apply") {
         $oldMoved = $true
         Rename-Item -LiteralPath $stage -NewName "EFI"
         $newMoved = $true
-        Assert-EfiFolder -Path $ActiveEfi
+        Assert-EfiFolder -Path $ActiveEfi -ForCandidate
         Assert-Manifest -ManifestPath $manifest -EfiRoot $ActiveEfi
         Assert-RecoveryReadOnly
         Remove-Item -LiteralPath $StatePath -Force
