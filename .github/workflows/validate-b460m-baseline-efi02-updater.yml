@@ -22,20 +22,53 @@ jobs:
           $errors = $null
           [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -gt 0) {
-            $errors | Format-List | Out-String | Write-Host
+            $errors | ForEach-Object { Write-Host ("line {0}, column {1}: {2}" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message) }
             throw "PowerShell parser reported syntax errors."
           }
           Write-Host "POWERSHELL_51_PARSE=PASS"
-      - name: Verify updater safety guards
+      - name: Verify updater safety and SMBIOS guards
         shell: powershell
         run: |
           $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
           $s = Get-Content $path -Raw
-          $required = @('000000123ADC','LITEON I T LCS-128L9S','APPLY-BASELINE-02','EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-','EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c','ValidateSet("Prepare","Apply")')
+          $required = @(
+            '000000123ADC','LITEON I T LCS-128L9S','APPLY-BASELINE-02',
+            'EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-',
+            'EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c',
+            'ValidateSet("Prepare","Apply")','C02J5NYBPN5T','C02231609GUPHC1JC',
+            '78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6','Get-NetAdapter -Physical',
+            'SMBIOS_INJECTION_VERIFIED','-SkipConfigPlist'
+          )
           foreach ($item in $required) { if ($s -notlike "*$item*") { throw "Missing marker: $item" } }
-          foreach ($item in @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')) { if ($s.Contains($item)) { throw "Forbidden disk operation: $item" } }
-          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') { throw "Two-step rename operations missing." }
-          Write-Host "UPDATER_SAFETY_GUARDS=PASS"
+          foreach ($item in @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')) {
+            if ($s.Contains($item)) { throw "Forbidden disk operation: $item" }
+          }
+          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') {
+            throw "Two-step rename operations missing."
+          }
+          Write-Host "UPDATER_SAFETY_AND_SMBIOS_GUARDS=PASS"
+      - name: Test SMBIOS plist injection and verification
+        shell: powershell
+        run: |
+          $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
+          $s = Get-Content $path -Raw
+          $m = [regex]::Match($s, '(?s)\$PythonHelper\s*=\s*@''\r?\n(.*?)\r?\n''@')
+          if (-not $m.Success) { throw "Embedded Python helper not found." }
+          $helper = "$env:RUNNER_TEMP\Set-B460M-Smbios.py"
+          Set-Content -LiteralPath $helper -Value $m.Groups[1].Value -Encoding UTF8
+          $fixture = "$env:RUNNER_TEMP\config.plist"
+          @'
+          import plistlib
+          data={"PlatformInfo":{"Generic":{}}}
+          with open(r"FIXTURE_PATH","wb") as f: plistlib.dump(data,f)
+          '@.Replace("FIXTURE_PATH",$fixture) | python -
+          if ($LASTEXITCODE -ne 0) { throw "Could not create plist fixture." }
+          $rom = "aabbccddeeff"
+          python $helper inject $fixture C02J5NYBPN5T C02231609GUPHC1JC 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6 $rom
+          if ($LASTEXITCODE -ne 0) { throw "SMBIOS injection fixture test failed." }
+          python $helper verify $fixture C02J5NYBPN5T C02231609GUPHC1JC 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6 $rom
+          if ($LASTEXITCODE -ne 0) { throw "SMBIOS verification fixture test failed." }
+          Write-Host "SMBIOS_PLIST_INJECT_VERIFY=PASS"
       - name: Download and verify EFI-02 ZIP and separate manifest
         shell: powershell
         run: |
