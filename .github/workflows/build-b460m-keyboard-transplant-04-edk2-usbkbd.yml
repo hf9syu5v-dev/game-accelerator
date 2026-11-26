@@ -71,6 +71,7 @@ jobs:
           # SimpleTextInputEx protocol path. Do not enable OpenUsbKbDxe.
           inp["KeySupport"] = True
           inp["KeySupportMode"] = "V2"
+          u["ConnectDrivers"] = True
 
           drivers = u["Drivers"]
           assert all(x.get("Path") != "UsbKbDxe.efi" for x in drivers)
@@ -85,6 +86,7 @@ jobs:
 
           assert inp["KeySupport"] is True
           assert inp["KeySupportMode"] == "V2"
+          assert u["ConnectDrivers"] is True
           assert all(x.get("Path") != "OpenUsbKbDxe.efi" for x in drivers)
           assert any(x.get("Path") == "UsbKbDxe.efi" and x.get("Enabled") is True for x in drivers)
           p.write_bytes(plistlib.dumps(c, fmt=plistlib.FMT_XML, sort_keys=True))
@@ -113,6 +115,7 @@ jobs:
           c = plistlib.loads((root / "config.plist").read_bytes())
           assert c["UEFI"]["Input"]["KeySupport"] is True
           assert c["UEFI"]["Input"]["KeySupportMode"] == "V2"
+          assert c["UEFI"]["ConnectDrivers"] is True
           assert any(x["Path"] == "UsbKbDxe.efi" and x["Enabled"] for x in c["UEFI"]["Drivers"])
           assert (root / "Drivers/UsbKbDxe.efi").is_file()
           assert all(x["Path"] != "OpenUsbKbDxe.efi" for x in c["UEFI"]["Drivers"])
@@ -145,7 +148,7 @@ jobs:
           - UEFI.Input.KeySupport = True
           - UEFI.Input.KeySupportMode = V2
           - UEFI.Drivers includes UsbKbDxe.efi
-          - OpenUsbKbDxe.efi is not loaded.
+          - UEFI.ConnectDrivers = True to connect the EDK II UEFI Driver Binding protocol to existing USB controllers.\n          - OpenUsbKbDxe.efi is not loaded.
 
           Only the keyboard driver and its required OpenCore configuration are
           changed from the baseline. SMBIOS, ACPI, kexts, USB mapping, boot args,
