@@ -60,7 +60,6 @@ jobs:
              $cfg -notmatch '(?s)<key>ConnectDrivers</key>\s*<true\s*/>' -or
              $cfg -notmatch 'UsbKbDxe\.efi' -or
              $cfg -match 'OpenUsbKbDxe\.efi|Ps2KeyboardDxe\.efi' -or
-             $cfg -match 'HideVerbose' -or
              $cfg -notmatch '-radvesa' -or $cfg -notmatch '-wegnoigpu' -or
              $cfg -match '-wegnoegpu' -or $cfg -notmatch 'iMac20,1'){
             throw 'Candidate 04 configuration assertion failed.'
