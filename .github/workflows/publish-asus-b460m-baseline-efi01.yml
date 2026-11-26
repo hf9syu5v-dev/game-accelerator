@@ -1,0 +1,54 @@
+name: Publish 华硕b460黑苹果基准efi01
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - ".github/workflows/publish-asus-b460m-baseline-efi01.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify the real-hardware-tested VESA baseline package
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip"
+          curl -fL --retry 3 "$url" -o B460M-RX570-VESA-Diagnostic-EFI.zip
+          echo "fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf  B460M-RX570-VESA-Diagnostic-EFI.zip" | sha256sum -c
+          unzip -t B460M-RX570-VESA-Diagnostic-EFI.zip
+          mkdir check && unzip -q B460M-RX570-VESA-Diagnostic-EFI.zip -d check
+          test -s check/EFI/BOOT/BOOTx64.efi
+          test -s check/EFI/OC/OpenCore.efi
+          test -s check/EFI/OC/config.plist
+      - name: Publish named baseline release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: asus-b460-hackintosh-baseline-efi01
+          name: 华硕b460黑苹果基准efi01
+          target_commitish: ${{ github.sha }}
+          body: |
+            # 华硕b460黑苹果基准efi01
+
+            **状态：目标机器实机测试通过（由用户确认）。**
+
+            本发布使用已验证的 RX570 VESA 基准 EFI 原包，不修改 EFI 内容。它是 ASUS TUF GAMING B460M-PLUS（非 Wi-Fi）黑苹果键盘输入排查的稳定回退基准。
+
+            - SMBIOS：iMac20,1
+            - 启动参数：包含 `-radvesa -wegnoigpu`
+            - 用途：VESA 显示诊断基准；不代表 RX570 完整图形加速已经验收
+            - 不包含 OpenUsbKbDxe / Ps2KeyboardDxe 键盘替代驱动
+            - 技术文档及实机截图：https://github.com/hf9syu5v-dev/game-accelerator/blob/main/docs/华硕B460黑苹果基准EFI01.md
+
+            原始基准包 SHA-256：`fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf`
+          files: B460M-RX570-VESA-Diagnostic-EFI.zip
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          make_latest: false
