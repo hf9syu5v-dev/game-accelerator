@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fL --retry 3 "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" -o oc.zip
-          echo "3f5f42b85703cf2c08e8dcd9245a52fb4326c9f4ef335c75b49f516cbbbe131c6  oc.zip" | sha256sum -c
+          echo "3f5f42b85703cf2c08e8dcd9245a52fb4326c9f4ef335c75b49f516cbbe131c6  oc.zip" | sha256sum -c
           mkdir oc && unzip -q oc.zip -d oc
           validator="$(find oc -type f -name ocvalidate.linux -print -quit)"
           test -n "$validator" && chmod +x "$validator"
