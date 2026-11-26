@@ -11,6 +11,9 @@ $Serial = '000000123ADC'
 $DiskBytes = [int64]128035676160
 $EspGuid = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 $BaselineName = 'EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC'
+$BaselineUrl = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-rx570-vesa-diagnostic/B460M-RX570-VESA-Diagnostic-EFI.zip'
+$BaselineZipSha256 = 'fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf'
+$Work = Join-Path $env:TEMP ('B460M-VESA-Baseline-' + [guid]::NewGuid().ToString('N'))
 $RunSuffix = [guid]::NewGuid().ToString('N').Substring(0,8)
 $BackupName = 'EFI-PREVIOUS-BEFORE-SAME-BOARD-REFERENCE-' + $RunSuffix
 $StageName = 'EFI-SAME-BOARD-BASELINE-STAGING-' + $RunSuffix
@@ -23,7 +26,7 @@ function Get-Sha([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SH
 
 $Root = $Drive + ':\'
 $Current = Join-Path $Root 'EFI'
-$Baseline = Join-Path $Root $BaselineName
+$Baseline = Join-Path $Work 'EFI'
 $Backup = Join-Path $Root $BackupName
 $Stage = Join-Path $Root $StageName
 $Failed = Join-Path $Root $FailedName
@@ -110,3 +113,4 @@ Write-Host "REFERENCE_BASELINE_PRESERVED=F:\$BaselineName (source unchanged)"
 Write-Host "FILES_SHA256_VERIFIED=$($sourceFiles.Count)"
 Write-Host 'RECOVERY_AND_ALL_PARTITIONS=UNCHANGED'
 Write-Host 'INTERNAL_DISKS=NOT_MODIFIED'
+if (Test-Path -LiteralPath $Work) { Remove-Item -LiteralPath $Work -Recurse -Force -ErrorAction SilentlyContinue }
