@@ -12,7 +12,7 @@ $DmgSha='7314eb401f5e84087f621b3599f0ad21ca3cdcc2685ea2da7f76806792328e20'
 $ChunkSha='dbf262b83a16d55f1b2d8ce8ce95986561f8e889719524ea4b7aa22a2417ca27'
 $S=[guid]::NewGuid().ToString('N').Substring(0,8)
 $BackupName="EFI-BEFORE-VESA-BASELINE-$S"; $StageName="EFI-VESA-STAGING-$S"; $FailedName="EFI-VESA-FAILED-$S"
-$Root="$Drive:\"
+$Root=$Drive + ':\\'
 $Current=Join-Path $Root 'EFI'; $Recovery=Join-Path $Root 'com.apple.recovery.boot'
 $Work=Join-Path $env:TEMP "B460M-VESA-$S"
 function Sha([string]$p){(Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()}
