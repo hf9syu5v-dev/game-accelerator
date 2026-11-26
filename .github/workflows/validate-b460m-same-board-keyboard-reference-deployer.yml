@@ -1,0 +1,77 @@
+name: Validate same-board keyboard-reference EFI deployer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-Same-Board-Keyboard-Reference.ps1"
+      - ".github/workflows/validate-b460m-same-board-keyboard-reference-deployer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell and audit safety
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'B460M-OC-Builder/Deploy-B460M-Same-Board-Keyboard-Reference.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Error }
+          $source = Get-Content -LiteralPath $path -Raw
+          foreach ($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk')) {
+            if ($source -match [regex]::Escape($term)) { throw "Forbidden disk/partition operation found: $term" }
+          }
+          foreach ($required in @(
+            '000000123ADC',
+            'LITEON I T LCS-128L9S',
+            '55117f0c1ecc87eea6a62d83acb57c5b5f84c1e9adbc7cd773ecd36724c26835',
+            'EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC',
+            'EFI-PREVIOUS-SAME-BOARD-REFERENCE-BASELINE',
+            'BaseSystem.dmg',
+            'BaseSystem.chunklist',
+            'Rename-Item',
+            'SAME_BOARD_REFERENCE_EFI_DEPLOYMENT_SUCCESS'
+          )) {
+            if ($source -notmatch [regex]::Escape($required)) { throw "Required assertion missing: $required" }
+          }
+          if ($source -match 'Remove-Item[^\r\n]*F:\\') { throw 'Direct F: deletion is forbidden.' }
+          'POWERSHELL_51_PARSE=PASS'
+          'USB_DISK_IDENTITY_GUARD=PASS'
+          'RECOVERY_READ_ONLY_HASH_GUARD=PASS'
+          'ARTIFACT_SHA256_PIN=PASS'
+          'EFI_ONLY_STAGE_BACKUP_ROLLBACK=PASS'
+          'INTERNAL_DISK_AND_PARTITION_MUTATIONS=ABSENT'
+      - name: Verify pinned artifact download and ZIP structure
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-same-board-keyboard-reference/B460M-Same-Board-Keyboard-Reference-EFI.zip'
+          $expected = '55117f0c1ecc87eea6a62d83acb57c5b5f84c1e9adbc7cd773ecd36724c26835'
+          $zip = Join-Path $env:RUNNER_TEMP 'same-board-reference.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Artifact SHA256 mismatch: $actual" }
+          $out = Join-Path $env:RUNNER_TEMP 'same-board-reference'
+          Expand-Archive -LiteralPath $zip -DestinationPath $out
+          $efi = Join-Path $out 'EFI'
+          foreach ($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Kexts\UTBMap.kext\Contents\Info.plist')) {
+            if (!(Test-Path -LiteralPath (Join-Path $efi $rel) -PathType Leaf)) { throw "Missing EFI file: $rel" }
+          }
+          $cfg = Get-Content -LiteralPath (Join-Path $efi 'OC\config.plist') -Raw
+          foreach ($required in @('KeySupport','KeySupportMode','Builtin','GraphicsInputMirroring','PollAppleHotKeys','-radvesa','-wegnoigpu','iMac20,1')) {
+            if ($cfg -notmatch [regex]::Escape($required)) { throw "Missing config value: $required" }
+          }
+          if ($cfg -match 'OpenUsbKbDxe\.efi|Ps2KeyboardDxe\.efi') { throw 'Unexpected alternative keyboard driver.' }
+          "ARTIFACT_SHA256=$actual"
+          'ARTIFACT_EXPANSION=PASS'
+          'EFI_STRUCTURE=PASS'
+          'REFERENCE_KEYBOARD_PROFILE=PASS'
