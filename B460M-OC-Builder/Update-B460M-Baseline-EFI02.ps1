@@ -100,7 +100,7 @@ function Assert-UsbIdentity {
     $volume = Get-Volume -DriveLetter $DriveLetter
     if ($disk.BusType -ne "USB") { throw "Safety stop: selected drive is not USB." }
     # Windows may truncate the vendor prefix; verify the distinctive model suffix.
-    if (($disk.Model -replace '\s','') -notmatch 'LCS-128L9S
+    if (($disk.Model -replace '\s','') -notmatch 'LCS-128L9S$') { throw "Safety stop: unexpected USB model: $($disk.Model)" }
     if (($disk.SerialNumber -replace '\s','') -ne "000000123ADC") { throw "Safety stop: unexpected USB serial: $($disk.SerialNumber)" }
     if ($disk.Size -lt 110000000000 -or $disk.Size -gt 130000000000) { throw "Safety stop: unexpected USB capacity." }
     if ($disk.PartitionStyle -ne "GPT" -or $disk.IsBoot -or $disk.IsSystem) { throw "Safety stop: unsafe partition style or Boot/System disk." }
