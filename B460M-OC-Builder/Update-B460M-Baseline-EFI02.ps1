@@ -1,9 +1,6 @@
 #requires -Version 5.1
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)]
-    [ValidateSet("Prepare","Apply")]
-    [string]$Step,
     [string]$DriveLetter = "F"
 )
 $ErrorActionPreference = "Stop"
@@ -26,7 +23,7 @@ $TestSerial = "C02J5NYBPN5T"
 $TestMLB = "C02231609GUPHC1JC"
 $TestUUID = "78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$StatePath = Join-Path $ScriptDir "B460M-Baseline-EFI02-Prepared.json"
+$RunId = [guid]::NewGuid().ToString("N")
 
 $PythonHelper = @'
 import plistlib, sys, uuid, re
@@ -120,11 +117,7 @@ function Assert-EfiFolder {
     foreach ($relative in @("BOOT\BOOTx64.efi","OC\OpenCore.efi","OC\config.plist","OC\Drivers\OpenRuntime.efi","OC\Drivers\HfsPlus.efi")) {
         if (-not (Test-Path -LiteralPath (Join-Path $Path $relative) -PathType Leaf)) { throw "EFI missing required file: $relative" }
     }
-    if ($ForCandidate) {
-        $cfg = Get-Content -LiteralPath (Join-Path $Path "OC\config.plist") -Raw
-        if ($cfg -match "-radvesa" -or $cfg -match "-wegnoigpu") { throw "EFI has obsolete graphics-isolation boot arguments." }
-        if ($cfg -notmatch "iMac20,1") { throw "EFI iMac20,1 marker missing." }
-    }
+    # Candidate config.plist is binary; validate it with the Python plist helper, not Get-Content.
 }
 function Assert-Manifest {
     param([string]$ManifestPath,[string]$EfiRoot,[switch]$SkipConfigPlist)
@@ -172,83 +165,64 @@ function Assert-StagePath {
 Assert-UsbIdentity
 Assert-RecoveryReadOnly
 
-if ($Step -eq "Prepare") {
-    if (-not (Test-Path -LiteralPath $ActiveEfi -PathType Container)) { throw "Current EFI directory missing." }
-    Assert-EfiFolder -Path $ActiveEfi
-    $python = Get-PythonCommand
-    $rom = Get-I219VMac
-    $work = Join-Path $env:TEMP ("B460M-Baseline02-" + [guid]::NewGuid().ToString("N"))
-    $extract = Join-Path $work "extract"
-    $zip = Join-Path $work "B460M-Baseline-EFI-02.zip"
-    $manifest = Join-Path $work "EFI-SHA256SUMS.txt"
-    $helper = Join-Path $work "Set-B460M-Smbios.py"
-    $stage = Join-Path $Root ("EFI-BASELINE02-STAGING-" + [guid]::NewGuid().ToString("N"))
-    New-Item -ItemType Directory -Path $work | Out-Null
-    try {
-        Invoke-WebRequest -Uri $ZipUrl -OutFile $zip -UseBasicParsing
-        $zipHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($zipHash -ne $ExpectedZipSha256) { throw "EFI-02 ZIP SHA256 mismatch: $zipHash" }
-        Invoke-WebRequest -Uri $ManifestUrl -OutFile $manifest -UseBasicParsing
-        Expand-Archive -LiteralPath $zip -DestinationPath $extract
-        $source = Join-Path $extract "EFI"
-        if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "ZIP has no EFI directory at root." }
-        Assert-Manifest -ManifestPath $manifest -EfiRoot $source
-        Assert-EfiFolder -Path $source -ForCandidate
-        Set-Content -LiteralPath $helper -Value $PythonHelper -Encoding UTF8
-        $config = Join-Path $source "OC\config.plist"
-        Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "inject" -Config $config -Rom $rom
-        Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "verify" -Config $config -Rom $rom
-        New-Item -ItemType Directory -Path $stage | Out-Null
-        Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $stage -Recurse
-        Assert-Manifest -ManifestPath $manifest -EfiRoot $stage -SkipConfigPlist
-        Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "verify" -Config (Join-Path $stage "OC\config.plist") -Rom $rom
-        Assert-EfiFolder -Path $stage -ForCandidate
-        [ordered]@{
-            Version = 3
-            DriveLetter = $DriveLetter
-            StagePath = $stage
-            ZipSha256 = $ExpectedZipSha256
-            Rom = $rom
-            PreparedAt = (Get-Date).ToString("o")
-            WorkPath = $work
-            ManifestPath = $manifest
-            HelperPath = $helper
-            PythonPath = $python
-        } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StatePath -Encoding UTF8
-        Write-Host "PREPARE_SUCCESS" -ForegroundColor Green
-        Write-Host "SMBIOS: iMac20,1 / authorized test Serial+MLB+SmUUID / ROM from physical I219-V MAC."
-        Write-Host "Staging path: $stage"
-        Write-Host "Active EFI has NOT been changed."
-        Write-Host "Recovery and all other disks have NOT been modified."
-    }
-    catch {
-        if (Test-Path -LiteralPath $stage) { Write-Warning "Incomplete staging directory retained for inspection: $stage" }
-        throw
-    }
-}
-elseif ($Step -eq "Apply") {
-    if (-not (Test-Path -LiteralPath $StatePath -PathType Leaf)) { throw "No prepared state. Run Prepare first." }
-    $state = Get-Content -LiteralPath $StatePath -Raw | ConvertFrom-Json
-    if ($state.Version -ne 3 -or $state.DriveLetter -ne $DriveLetter -or $state.ZipSha256 -ne $ExpectedZipSha256) { throw "Prepared state/package mismatch. Run Prepare again." }
-    $stage = [string]$state.StagePath
-    Assert-StagePath -Path $stage
-    if (-not (Test-Path -LiteralPath $stage -PathType Container)) { throw "Staging directory missing." }
-    $workFull = [IO.Path]::GetFullPath([string]$state.WorkPath)
-    $manifest = [IO.Path]::GetFullPath([string]$state.ManifestPath)
-    $helper = [IO.Path]::GetFullPath([string]$state.HelperPath)
-    if (-not $manifest.StartsWith($workFull,[StringComparison]::OrdinalIgnoreCase) -or -not $helper.StartsWith($workFull,[StringComparison]::OrdinalIgnoreCase)) { throw "Prepared helper/manifest path is outside the work directory." }
-    if (-not (Test-Path -LiteralPath $manifest -PathType Leaf) -or -not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw "Prepared verification files are missing. Run Prepare again." }
-    if (-not (Test-Path -LiteralPath ([string]$state.PythonPath) -PathType Leaf)) { throw "Previously used Python executable is unavailable." }
+# Single-run deployment: user downloads this script, then runs it once.
+# All preparation, verification, backup, replacement and rollback happen here.
+if (-not (Test-Path -LiteralPath $ActiveEfi -PathType Container)) { throw "Current EFI directory missing." }
+Assert-EfiFolder -Path $ActiveEfi
+
+$python = Get-PythonCommand
+$rom = Get-I219VMac
+$work = Join-Path $env:TEMP ("B460M-Baseline02-" + $RunId)
+$extract = Join-Path $work "extract"
+$zip = Join-Path $work "B460M-Baseline-EFI-02.zip"
+$manifest = Join-Path $work "EFI-SHA256SUMS.txt"
+$helper = Join-Path $work "Set-B460M-Smbios.py"
+$stage = Join-Path $Root ("EFI-BASELINE02-STAGING-" + $RunId)
+$backup = Join-Path $Root ("EFI-PREVIOUS-BASELINE02-" + $RunId)
+$failed = Join-Path $Root ("EFI-FAILED-BASELINE02-" + $RunId)
+
+New-Item -ItemType Directory -Path $work | Out-Null
+try {
+    Write-Host "[1/6] Downloading EFI-02 package and manifest..."
+    Invoke-WebRequest -Uri $ZipUrl -OutFile $zip -UseBasicParsing
+    $zipHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($zipHash -ne $ExpectedZipSha256) { throw "EFI-02 ZIP SHA256 mismatch: $zipHash" }
+    Invoke-WebRequest -Uri $ManifestUrl -OutFile $manifest -UseBasicParsing
+
+    Write-Host "[2/6] Extracting and verifying package..."
+    Expand-Archive -LiteralPath $zip -DestinationPath $extract
+    $source = Join-Path $extract "EFI"
+    if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "ZIP has no EFI directory at root." }
+    Assert-Manifest -ManifestPath $manifest -EfiRoot $source
+    Assert-EfiFolder -Path $source
+
+    Write-Host "[3/6] Injecting authorized test SMBIOS and physical I219-V MAC..."
+    Set-Content -LiteralPath $helper -Value $PythonHelper -Encoding UTF8
+    $config = Join-Path $source "OC\config.plist"
+    Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "inject" -Config $config -Rom $rom
+    Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "verify" -Config $config -Rom $rom
+
+    Write-Host "[4/6] Staging and verifying the complete EFI..."
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $stage -Recurse
     Assert-Manifest -ManifestPath $manifest -EfiRoot $stage -SkipConfigPlist
-    Invoke-SmbiosHelper -Python ([string]$state.PythonPath) -Helper $helper -Mode "verify" -Config (Join-Path $stage "OC\config.plist") -Rom ([string]$state.Rom)
-    Assert-EfiFolder -Path $stage -ForCandidate
-    if (-not (Test-Path -LiteralPath $ActiveEfi -PathType Container)) { throw "Active EFI directory missing." }
-    $backup = Join-Path $Root ("EFI-PREVIOUS-BASELINE02-" + [guid]::NewGuid().ToString("N"))
-    $failed = Join-Path $Root ("EFI-FAILED-BASELINE02-" + [guid]::NewGuid().ToString("N"))
-    Write-Host "Only $ActiveEfi will be replaced. Backup: $backup"
-    Write-Host "Recovery, Recovery staging directories, E:, and internal disks are not targets."
-    $confirm = Read-Host "Type APPLY-BASELINE-02 to continue"
-    if ($confirm -cne "APPLY-BASELINE-02") { throw "Cancelled. No EFI changes made." }
+    Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "verify" -Config (Join-Path $stage "OC\config.plist") -Rom $rom
+    Assert-EfiFolder -Path $stage
+
+    # Recheck target identity and Recovery immediately before any write.
+    Assert-UsbIdentity
+    Assert-RecoveryReadOnly
+    if (-not (Test-Path -LiteralPath $ActiveEfi -PathType Container)) { throw "Active EFI disappeared before deployment." }
+
+    Write-Host ""
+    Write-Host "All pre-deployment checks passed." -ForegroundColor Green
+    Write-Host "Target: $ActiveEfi"
+    Write-Host "The existing EFI will be retained as: $backup"
+    Write-Host "Only F:\EFI will be replaced. Recovery, E:, and internal disks will not be modified."
+    $confirm = Read-Host "To deploy this EFI now, type UPDATE-B460M-EFI02"
+    if ($confirm -cne "UPDATE-B460M-EFI02") { throw "Cancelled by user. Active EFI was not changed." }
+
+    Write-Host "[5/6] Backing up old EFI and installing the verified EFI..."
     $oldMoved = $false
     $newMoved = $false
     try {
@@ -256,24 +230,43 @@ elseif ($Step -eq "Apply") {
         $oldMoved = $true
         Rename-Item -LiteralPath $stage -NewName "EFI"
         $newMoved = $true
-        Assert-EfiFolder -Path $ActiveEfi -ForCandidate
+
+        Write-Host "[6/6] Verifying installed EFI and Recovery integrity..."
+        Assert-EfiFolder -Path $ActiveEfi
         Assert-Manifest -ManifestPath $manifest -EfiRoot $ActiveEfi -SkipConfigPlist
-        Invoke-SmbiosHelper -Python ([string]$state.PythonPath) -Helper $helper -Mode "verify" -Config (Join-Path $ActiveEfi "OC\config.plist") -Rom ([string]$state.Rom)
+        Invoke-SmbiosHelper -Python $python -Helper $helper -Mode "verify" -Config (Join-Path $ActiveEfi "OC\config.plist") -Rom $rom
         Assert-RecoveryReadOnly
+
+        Write-Host ""
         Write-Host "BASELINE02_DEPLOYMENT_SUCCESS" -ForegroundColor Green
         Write-Host "Previous EFI backup retained: $backup"
-        Remove-Item -LiteralPath $StatePath -Force
+        Write-Host "Temporary download/work files: $work"
+        Write-Host "The computer has not yet been boot-tested; next step is to boot from the USB and report the result."
     }
     catch {
         $failure = $_
         if ($newMoved -and (Test-Path -LiteralPath $ActiveEfi)) {
-            Rename-Item -LiteralPath $ActiveEfi -NewName (Split-Path $failed -Leaf)
-            Write-Warning "Failed candidate retained: $failed"
+            try {
+                Rename-Item -LiteralPath $ActiveEfi -NewName (Split-Path $failed -Leaf)
+                Write-Warning "Failed candidate retained: $failed"
+            } catch {
+                Write-Warning "Could not move failed candidate aside: $($_.Exception.Message)"
+            }
         }
         if ($oldMoved -and (Test-Path -LiteralPath $backup)) {
-            Rename-Item -LiteralPath $backup -NewName "EFI"
-            Write-Warning "Previous EFI restored."
+            try {
+                Rename-Item -LiteralPath $backup -NewName "EFI"
+                Write-Warning "Previous EFI restored successfully."
+            } catch {
+                throw "CRITICAL: deployment failed and automatic restoration also failed. Old EFI remains at $backup. Original error: $($failure.Exception.Message). Restore error: $($_.Exception.Message)"
+            }
         }
         throw $failure
     }
+}
+catch {
+    if (Test-Path -LiteralPath $stage) {
+        Write-Warning "Staging directory retained for inspection: $stage"
+    }
+    throw
 }
