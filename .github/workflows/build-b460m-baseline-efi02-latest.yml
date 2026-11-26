@@ -41,7 +41,6 @@ jobs:
           set -euo pipefail
           mkdir -p downloads oc-release kext-release
           curl -fL --retry 3 https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip -o downloads/OpenCore-1.0.8-RELEASE.zip
-          echo "c9c4d5b6d4b65a7c6f8b0f5c1d4e7a9b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f  downloads/OpenCore-1.0.8-RELEASE.zip" > /tmp/oc-sha-placeholder
           unzip -q downloads/OpenCore-1.0.8-RELEASE.zip -d oc-release
           fetch_kext() {
             local repo="$1" version="$2" name="$3"
@@ -62,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import plistlib, shutil
+          import plistlib, shutil, copy
           from pathlib import Path
           efi=Path("staging/EFI")
           oc=efi/"OC"
@@ -103,6 +102,19 @@ jobs:
           # Ensure config Kernel->Add entries match actual bundles and executables.
           p=oc/"config.plist"
           with p.open("rb") as f: c=plistlib.load(f)
+          # Schema-migrate the board-specific config against the exact OC 1.0.8 Sample.plist.
+          with (Path("oc-release/Docs/Sample.plist")).open("rb") as f: sample=plistlib.load(f)
+          def merge_missing(dst, src):
+            if isinstance(dst,dict) and isinstance(src,dict):
+              for key,value in src.items():
+                if key not in dst: dst[key]=copy.deepcopy(value)
+                else: merge_missing(dst[key],value)
+            elif isinstance(dst,list) and isinstance(src,list) and dst and src and isinstance(dst[0],dict) and isinstance(src[0],dict):
+              for item in dst: merge_missing(item,src[0])
+          merge_missing(c,sample)
+          c["UEFI"].setdefault("Unload",[])
+          for driver in c["UEFI"].get("Drivers",[]):
+            driver.setdefault("HideVerbose",False)
           entries=c["Kernel"]["Add"]
           by_name={x["BundlePath"].removesuffix(".kext"):x for x in entries}
           order=["Lilu","VirtualSMC","SMCProcessor","SMCSuperIO","WhateverGreen",
