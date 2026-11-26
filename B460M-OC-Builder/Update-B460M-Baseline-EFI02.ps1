@@ -115,7 +115,7 @@ if ($Step -eq "Prepare") {
         New-Item -ItemType Directory -Path $stage | Out-Null
         Get-ChildItem -LiteralPath $efiSource -Force | Copy-Item -Destination $stage -Recurse -Force
         Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
-        Assert-EfiFolder -Path $stage -ForCandidate -ForCandidate
+        Assert-EfiFolder -Path $stage -ForCandidate
 
         $state = [ordered]@{
             DriveLetter = $DriveLetter
@@ -144,7 +144,7 @@ elseif ($Step -eq "Apply") {
     $stage = [string]$state.StagePath
     if (-not $stage.StartsWith($Root, [StringComparison]::OrdinalIgnoreCase)) { throw "Safety stop: staging path is outside the selected USB root." }
     if (-not (Test-Path -LiteralPath $stage -PathType Container)) { throw "Staging directory is missing: $stage" }
-    Assert-EfiFolder -Path $stage
+    Assert-EfiFolder -Path $stage -ForCandidate
     $manifest = Join-Path ([string]$state.WorkPath) "extract\EFI-MANIFEST.sha256"
     Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
 
