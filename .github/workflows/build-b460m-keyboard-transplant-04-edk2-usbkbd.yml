@@ -181,13 +181,10 @@ jobs:
           unzip -t B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
           sha256sum B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
 
-      - name: Publish separate 04 release
-        uses: softprops/action-gh-release@v2
+      - name: Upload verified 04 package as a workflow artifact
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: b460m-keyboard-transplant-04-edk2-usbkbd
-          name: B460M Keyboard Transplant 04 - TianoCore EDK II UsbKbDxe
-          target_commitish: ${{ github.sha }}
-          files: B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
-          overwrite_files: true
-          fail_on_unmatched_files: true
-          make_latest: false
+          name: B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe
+          path: B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip
+          if-no-files-found: error
+          retention-days: 90
