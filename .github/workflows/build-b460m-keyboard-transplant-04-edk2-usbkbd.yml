@@ -37,7 +37,7 @@ jobs:
           sudo apt-get install -y build-essential uuid-dev nasm iasl python3 python3-distutils
           git clone --branch edk2-stable202405 --depth 1 https://github.com/tianocore/edk2.git edk2
           cd edk2
-          git submodule update --init --depth 1
+          git submodule update --init --depth 1 BaseTools/Source/C/BrotliCompress/brotli
           make -C BaseTools
           source edksetup.sh
           build -p MdeModulePkg/MdeModulePkg.dsc \
