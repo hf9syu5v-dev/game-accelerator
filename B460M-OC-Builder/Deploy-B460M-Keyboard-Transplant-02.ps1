@@ -6,7 +6,7 @@ $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'
 $Drive='F'; $Model='LITEON I T LCS-128L9S'; $Serial='000000123ADC'
 $DiskBytes=[int64]128035676160; $EspGuid='c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 $Url='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keyboard-transplant-02/B460M-Keyboard-Transplant-02-OpenUsbKbDxe.zip'
-$ZipSha='2a0239f105f1a7914b8e0e6658ae9e8002c0f95bb077420625b87d163fc25679'
+$ZipSha='395a589cbb8aecc2d356e02a41b8f7d867d7ca08ace2467af5bb6a4eadccd1fd'
 $DmgSha='7314eb401f5e84087f621b3599f0ad21ca3cdcc2685ea2da7f76806792328e20'
 $ChunkSha='dbf262b83a16d55f1b2d8ce8ce95986561f8e889719524ea4b7aa22a2417ca27'
 $S=[guid]::NewGuid().ToString('N').Substring(0,8)
