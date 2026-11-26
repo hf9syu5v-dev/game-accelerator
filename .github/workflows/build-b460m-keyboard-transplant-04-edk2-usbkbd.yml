@@ -77,6 +77,10 @@ jobs:
           u["ConnectDrivers"] = True
 
           drivers = u["Drivers"]
+          # Strip post-1.0.5 metadata inherited from a baseline archive so the
+          # pinned OpenCore 1.0.5 schema validates cleanly.
+          for entry in drivers:
+              entry.pop("HideVerbose", None)
           assert all(x.get("Path") != "UsbKbDxe.efi" for x in drivers)
           assert all(x.get("Path") != "OpenUsbKbDxe.efi" for x in drivers)
           drivers.append({
