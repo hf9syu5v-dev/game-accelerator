@@ -90,7 +90,8 @@ if($Step -eq "Prepare"){
   $hash=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
   if($hash -ne $ExpectedZipSha256){throw "EFI-02 ZIP SHA256 mismatch: $hash"}
   Expand-Archive -LiteralPath $zip -DestinationPath $extract
-  $source=Join-Path $extract "EFI"; $manifest=Join-Path $extract "EFI-SHA256SUMS.txt"
+  $source=Join-Path $extract "EFI"; $manifest=Join-Path $work "EFI-SHA256SUMS.txt"
+  Invoke-WebRequest -Uri "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/EFI-SHA256SUMS.txt" -OutFile $manifest -UseBasicParsing
   if(-not(Test-Path -LiteralPath $source -PathType Container)){throw "ZIP has no EFI directory at root."}
   Assert-Manifest -ManifestPath $manifest -EfiRoot $source
   Assert-EfiFolder -Path $source -ForCandidate
@@ -98,7 +99,7 @@ if($Step -eq "Prepare"){
   Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $stage -Recurse
   Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
   Assert-EfiFolder -Path $stage -ForCandidate
-  [ordered]@{Version=2;DriveLetter=$DriveLetter;StagePath=$stage;ZipSha256=$ExpectedZipSha256;PreparedAt=(Get-Date).ToString("o");WorkPath=$work} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StatePath -Encoding UTF8
+  [ordered]@{Version=2;DriveLetter=$DriveLetter;StagePath=$stage;ZipSha256=$ExpectedZipSha256;PreparedAt=(Get-Date).ToString("o");WorkPath=$work;ManifestPath=$manifest} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $StatePath -Encoding UTF8
   Write-Host "PREPARE_SUCCESS" -ForegroundColor Green
   Write-Host "Staging path: $stage"
   Write-Host "Active EFI has NOT been changed."
@@ -111,7 +112,8 @@ elseif($Step -eq "Apply"){
  if($state.Version -ne 2 -or $state.DriveLetter -ne $DriveLetter -or $state.ZipSha256 -ne $ExpectedZipSha256){throw "Prepared state/package mismatch. Run Prepare again."}
  $stage=[string]$state.StagePath; Assert-StagePath -Path $stage
  if(-not(Test-Path -LiteralPath $stage -PathType Container)){throw "Staging directory missing."}
- $manifest=Join-Path ([string]$state.WorkPath) "extract\EFI-SHA256SUMS.txt"
+ $manifest=[string]$state.ManifestPath
+ if(-not $manifest.StartsWith([string]$state.WorkPath,[StringComparison]::OrdinalIgnoreCase)){throw "Manifest path is outside prepared work directory."}
  Assert-Manifest -ManifestPath $manifest -EfiRoot $stage
  Assert-EfiFolder -Path $stage -ForCandidate
  if(-not(Test-Path -LiteralPath $ActiveEfi -PathType Container)){throw "Active EFI directory missing."}
