@@ -41,7 +41,11 @@ jobs:
           c=plistlib.loads(p.read_bytes())
           assert c["UEFI"]["Input"]["KeySupport"] is True
           assert not any(d.get("Path") in ("OpenUsbKbDxe.efi","Ps2KeyboardDxe.efi") for d in c["UEFI"]["Drivers"])
-          # Single-variable experiment: change only PollAppleHotKeys.
+          # OpenCore 1.0.5 schema normalization: remove newer driver-only metadata
+          # that 1.0.5 does not recognize; retain every actual driver path and option.
+          for driver in c["UEFI"]["Drivers"]:
+              driver.pop("HideVerbose", None)
+          # Single-variable keyboard experiment: change only PollAppleHotKeys.
           c["Misc"]["Boot"]["PollAppleHotKeys"]=False
           p.write_bytes(plistlib.dumps(c,fmt=plistlib.FMT_XML,sort_keys=False))
           assert c["UEFI"]["Input"]["KeySupport"] is True
@@ -51,12 +55,12 @@ jobs:
           print("POLLAPPLEHOTKEYS_DISABLED=PASS")
           print("NO_EXTERNAL_KEYBOARD_DRIVER=PASS")
           PY
-      - name: Validate with official OpenCore 1.0.8 ocvalidate and verify preserved config
+      - name: Validate with matching official OpenCore 1.0.5 ocvalidate and verify preserved config
         shell: bash
         run: |
           set -euo pipefail
-          curl -fL --retry 3 "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" -o oc.zip
-          echo "3f5f42b85703cf2c08e8dcd9245a52fb4326c9f4ef335c75b49f516cbbe131c6  oc.zip" | sha256sum -c
+          curl -fL --retry 3 "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip" -o oc.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  oc.zip" | sha256sum -c
           mkdir oc && unzip -q oc.zip -d oc
           validator="$(find oc -type f -name ocvalidate.linux -print -quit)"
           test -n "$validator" && chmod +x "$validator"
@@ -88,7 +92,9 @@ jobs:
           Keyboard transplant 03 - built-in OpenCore input with hotkey polling disabled
 
           Base: pinned, previously real-hardware-tested RX570 VESA baseline.
-          Only config change: Misc.Boot.PollAppleHotKeys = false.
+          Keyboard behavior change: Misc.Boot.PollAppleHotKeys = false.
+          OpenCore 1.0.5 schema normalization: remove unsupported HideVerbose metadata
+          from UEFI driver dictionaries; actual driver paths/options remain unchanged.
           UEFI.Input.KeySupport remains true. No OpenUsbKbDxe or Ps2KeyboardDxe is added.
           All ACPI, kexts, USB map, pointer, graphics, SMBIOS and other config remain baseline.
           This is a one-variable A/B test. Test only after candidate 02 and restore baseline between candidates.
