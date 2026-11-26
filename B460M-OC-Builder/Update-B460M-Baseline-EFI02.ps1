@@ -276,14 +276,6 @@ catch {
     }
     throw
 }
-) { throw "Safety stop: unexpected USB model: $($disk.Model)" }
-    if (($disk.SerialNumber -replace '\s','') -ne "000000123ADC") { throw "Safety stop: unexpected USB serial: $($disk.SerialNumber)" }
-    if ($disk.Size -lt 110000000000 -or $disk.Size -gt 130000000000) { throw "Safety stop: unexpected USB capacity." }
-    if ($disk.PartitionStyle -ne "GPT" -or $disk.IsBoot -or $disk.IsSystem) { throw "Safety stop: unsafe partition style or Boot/System disk." }
-    if ($partition.GptType -ne "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}") { throw "Safety stop: partition is not EFI System Partition." }
-    if ($volume.FileSystem -ne "FAT32") { throw "Safety stop: EFI volume is not FAT32." }
-    Write-Host "USB identity verified." -ForegroundColor Green
-}
 function Assert-RecoveryReadOnly {
     if (-not (Test-Path -LiteralPath $Recovery -PathType Container)) { throw "Recovery directory missing." }
     foreach ($name in $ExpectedRecovery.Keys) {
