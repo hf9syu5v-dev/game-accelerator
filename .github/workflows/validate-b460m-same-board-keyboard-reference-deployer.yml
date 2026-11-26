@@ -33,7 +33,7 @@ jobs:
           foreach ($required in @(
             '000000123ADC',
             'LITEON I T LCS-128L9S',
-            '55117f0c1ecc87eea6a62d83acb57c5b5f84c1e9adbc7cd773ecd36724c26835',
+            '996405a64a7352a868a13208913448c8d10cc16ac556b2a24fec2b58428059f8',
             'EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC',
             'EFI-PREVIOUS-SAME-BOARD-REFERENCE-BASELINE',
             'BaseSystem.dmg',
@@ -55,7 +55,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $url = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-same-board-keyboard-reference/B460M-Same-Board-Keyboard-Reference-EFI.zip'
-          $expected = '55117f0c1ecc87eea6a62d83acb57c5b5f84c1e9adbc7cd773ecd36724c26835'
+          $expected = '996405a64a7352a868a13208913448c8d10cc16ac556b2a24fec2b58428059f8'
           $zip = Join-Path $env:RUNNER_TEMP 'same-board-reference.zip'
           Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
           $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
