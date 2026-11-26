@@ -1,0 +1,68 @@
+name: Validate B460M keyboard transplant 04 deployer
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - opencore-1.0.5-sequoia-rx570
+    paths:
+      - "B460M-OC-Builder/Deploy-B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.ps1"
+      - ".github/workflows/validate-b460m-keyboard-transplant-04-deployer.yml"
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse PowerShell and audit safety boundaries
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $path='B460M-OC-Builder/Deploy-B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count -gt 0){$errors|Format-List|Out-String|Write-Error}
+          $s=Get-Content -LiteralPath $path -Raw
+          foreach($term in @('Clear-Disk','Initialize-Disk','Format-Volume','New-Partition','Remove-Partition','Set-Partition','diskpart','clean all','Set-Disk')){
+            if($s -match [regex]::Escape($term)){throw "Forbidden disk/partition operation: $term"}
+          }
+          foreach($required in @('000000123ADC','LITEON I T LCS-128L9S','e27a2ea40408f084ad01f87464930113fc45fe68352822a15f682a2f9a831299','cda631d44699b37143f044a00ad679b8c49ca629d4106256d7ab082bc83c06f0','KeySupportMode','ConnectDrivers','UsbKbDxe.efi','BASELINE_ZIP_SHA256_MISMATCH','KEYBOARD_TRANSPLANT_04_DEPLOYMENT_SUCCESS','BaseSystem.dmg','BaseSystem.chunklist','Rename-Item')){
+            if($s -notmatch [regex]::Escape($required)){throw "Missing safety assertion: $required"}
+          }
+          'POWERSHELL_PARSE=PASS'
+          'USB_IDENTITY_GUARD=PASS'
+          'EXACT_BASELINE_TREE_GUARD=PASS'
+          'RECOVERY_HASH_GUARD=PASS'
+          'ARTIFACT_AND_DRIVER_HASH_PIN=PASS'
+          'EFI_ONLY_BACKUP_STAGE_ROLLBACK=PASS'
+          'NO_PARTITION_OR_INTERNAL_DISK_MUTATION=PASS'
+      - name: Verify release asset, driver and OpenCore configuration
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keyboard-transplant-04-edk2-usbkbd/B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip'
+          $expected='e27a2ea40408f084ad01f87464930113fc45fe68352822a15f682a2f9a831299'
+          $driverExpected='cda631d44699b37143f044a00ad679b8c49ca629d4106256d7ab082bc83c06f0'
+          $zip=Join-Path $env:RUNNER_TEMP 'candidate04.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          $actual=(Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($actual -ne $expected){throw "ZIP SHA256 mismatch: $actual"}
+          $out=Join-Path $env:RUNNER_TEMP 'candidate04'; Expand-Archive -LiteralPath $zip -DestinationPath $out
+          $efi=Join-Path $out 'EFI'
+          foreach($rel in @('BOOT\BOOTx64.efi','OC\OpenCore.efi','OC\config.plist','OC\Drivers\UsbKbDxe.efi','OC\Kexts\UTBMap.kext\Contents\Info.plist')){
+            if(!(Test-Path (Join-Path $efi $rel) -PathType Leaf)){throw "Missing EFI file: $rel"}
+          }
+          $driver=(Get-FileHash -LiteralPath (Join-Path $efi 'OC\Drivers\UsbKbDxe.efi') -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($driver -ne $driverExpected){throw "UsbKbDxe SHA256 mismatch: $driver"}
+          $cfg=Get-Content (Join-Path $efi 'OC\config.plist') -Raw
+          if($cfg -notmatch '(?s)<key>KeySupport</key>\s*<true\s*/>' -or
+             $cfg -notmatch '(?s)<key>KeySupportMode</key>\s*<string>V2</string>' -or
+             $cfg -notmatch '(?s)<key>ConnectDrivers</key>\s*<true\s*/>' -or
+             $cfg -notmatch 'UsbKbDxe\.efi' -or
+             $cfg -match 'OpenUsbKbDxe\.efi|Ps2KeyboardDxe\.efi' -or
+             $cfg -match 'HideVerbose' -or
+             $cfg -notmatch '-radvesa' -or $cfg -notmatch '-wegnoigpu' -or
+             $cfg -match '-wegnoegpu' -or $cfg -notmatch 'iMac20,1'){
+            throw 'Candidate 04 configuration assertion failed.'
+          }
+          'CANDIDATE_04_RELEASE_AND_CONFIG=PASS'
