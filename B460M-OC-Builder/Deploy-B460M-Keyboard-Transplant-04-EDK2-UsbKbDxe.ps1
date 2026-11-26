@@ -12,7 +12,8 @@ $EspGuid='c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 
 $BaseUrl='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/asus-b460-hackintosh-baseline-efi01/B460M-RX570-VESA-Diagnostic-EFI.zip'
 $BaseZipSha='fda623c96ed4ea8370ad1e985a1a2f5ac7e9a651815c57e959bea0d28a026daf'
-$Url='https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-keyboard-transplant-04-edk2-usbkbd/B460M-Keyboard-Transplant-04-EDK2-UsbKbDxe.zip'
+$ArtifactId='__ARTIFACT_ID__'
+$ArtifactUrl="https://api.github.com/repos/hf9syu5v-dev/game-accelerator/actions/artifacts/$ArtifactId/zip"
 $ZipSha='__ZIP_SHA256__'
 $DriverSha='cda631d44699b37143f044a00ad679b8c49ca629d4106256d7ab082bc83c06f0'
 $DmgSha='7314eb401f5e84087f621b3599f0ad21ca3cdcc2685ea2da7f76806792328e20'
