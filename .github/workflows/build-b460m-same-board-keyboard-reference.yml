@@ -102,9 +102,9 @@ jobs:
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 \
-            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-DEBUG.zip" \
-            -o /tmp/OpenCore-1.0.8-DEBUG.zip
-          echo "3F5F42B85703CF2C08E8DCD9245A52FB4326C9F4EF335C75B49F516CBBE131C6  /tmp/OpenCore-1.0.8-DEBUG.zip" | sha256sum --check
+            "https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.5/OpenCore-1.0.5-DEBUG.zip" \
+            -o /tmp/OpenCore-1.0.5-DEBUG.zip
+          echo "db0720000455502b34ad5a0fc53114f7cd6d388bc6af7636e8a530276a6bf0a1  /tmp/OpenCore-1.0.5-DEBUG.zip" | sha256sum --check
           mkdir /tmp/oc
           unzip -q /tmp/OpenCore-1.0.8-DEBUG.zip -d /tmp/oc
           validator="$(find /tmp/oc -type f -name ocvalidate.linux -print -quit)"
