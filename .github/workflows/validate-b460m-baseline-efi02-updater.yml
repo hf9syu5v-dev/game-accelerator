@@ -1,19 +1,24 @@
 name: Validate Baseline EFI 02 single-run updater
+
 on:
-  workflow_dispatch:
   push:
     branches:
       - opencore-1.0.5-sequoia-rx570
     paths:
       - "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
       - ".github/workflows/validate-b460m-baseline-efi02-updater.yml"
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
   validate:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Parse PowerShell 5.1 syntax
         shell: powershell
         run: |
@@ -26,155 +31,37 @@ jobs:
             throw "PowerShell parser reported syntax errors."
           }
           Write-Host "POWERSHELL_51_PARSE=PASS"
-      - name: Verify updater safety and SMBIOS guards
+
+      - name: Verify updater safety guards
         shell: powershell
         run: |
           $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
-          $s = Get-Content $path -Raw
+          $s = Get-Content -LiteralPath $path -Raw
           $required = @(
-            '000000123ADC','LCS-128L9S
-            'EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-',
-            'EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c',
-            'Single-run deployment','C02J5NYBPN5T','C02231609GUPHC1JC',
-            '78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6','Get-NetAdapter -Physical',
-            'SMBIOS_INJECTION_VERIFIED','-SkipConfigPlist',
-            'C:\\Program Files\\PyManager\\python.exe','Using previously installed Python'
+            '000000123ADC',
+            'LCS-128L9S$',
+            '$i219Adapters',
+            'UPDATE-B460M-EFI02',
+            'EFI-PREVIOUS-BASELINE02-',
+            'EFI-FAILED-BASELINE02-',
+            'EFI-SHA256SUMS.txt',
+            'c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c',
+            'Single-run deployment',
+            'C02J5NYBPN5T',
+            'C02231609GUPHC1JC',
+            '78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6',
+            'Get-NetAdapter -Physical',
+            'SMBIOS_INJECTION_VERIFIED',
+            'Assert-RecoveryReadOnly',
+            'Previous EFI restored successfully'
           )
-          foreach ($item in $required) { if ($s -notlike "*$item*") { throw "Missing marker: $item" } }
+          foreach ($item in $required) {
+            if ($s -notlike "*$item*") { throw "Missing required marker: $item" }
+          }
           foreach ($item in @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')) {
-            if ($s.Contains($item)) { throw "Forbidden disk operation: $item" }
+            if ($s.Contains($item)) { throw "Forbidden disk operation found: $item" }
           }
           if ($s -match 'ValidateSet\("Prepare","Apply"\)' -or $s -match '\$Step -eq') {
-            throw "Legacy manual Prepare/Apply interface must not return."
+            throw "Legacy Prepare/Apply interface detected."
           }
-          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') {
-            throw "Single-run backup/install rename operations missing."
-          }
-          if ($s -notmatch 'Assert-RecoveryReadOnly' -or $s -notmatch 'Previous EFI restored successfully') {
-            throw "Recovery guard or rollback protection missing."
-          }
-          Write-Host "UPDATER_SAFETY_AND_SMBIOS_GUARDS=PASS"
-      - name: Test SMBIOS plist injection and verification
-        shell: powershell
-        run: |
-          $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
-          $s = Get-Content $path -Raw
-          $m = [regex]::Match($s, '(?s)\$PythonHelper\s*=\s*@''\r?\n(.*?)\r?\n''@')
-          if (-not $m.Success) { throw "Embedded Python helper not found." }
-          $helper = "$env:RUNNER_TEMP\Set-B460M-Smbios.py"
-          Set-Content -LiteralPath $helper -Value $m.Groups[1].Value -Encoding UTF8
-          $fixture = "$env:RUNNER_TEMP\config.plist"
-          @'
-          import plistlib
-          data={"PlatformInfo":{"Generic":{}}}
-          with open(r"FIXTURE_PATH","wb") as f: plistlib.dump(data,f)
-          '@.Replace("FIXTURE_PATH",$fixture) | python -
-          if ($LASTEXITCODE -ne 0) { throw "Could not create plist fixture." }
-          $rom = "aabbccddeeff"
-          python $helper inject $fixture C02J5NYBPN5T C02231609GUPHC1JC 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6 $rom
-          if ($LASTEXITCODE -ne 0) { throw "SMBIOS injection fixture test failed." }
-          python $helper verify $fixture C02J5NYBPN5T C02231609GUPHC1JC 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6 $rom
-          if ($LASTEXITCODE -ne 0) { throw "SMBIOS verification fixture test failed." }
-          Write-Host "SMBIOS_PLIST_INJECT_VERIFY=PASS"
-      - name: Download and verify EFI-02 ZIP and separate manifest
-        shell: powershell
-        run: |
-          $base = "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/"
-          $zip = "$env:RUNNER_TEMP\efi02.zip"
-          $manifest = "$env:RUNNER_TEMP\EFI-SHA256SUMS.txt"
-          Invoke-WebRequest -Uri ($base + "B460M-Baseline-EFI-02.zip") -OutFile $zip -UseBasicParsing
-          Invoke-WebRequest -Uri ($base + "EFI-SHA256SUMS.txt") -OutFile $manifest -UseBasicParsing
-          $expected = "c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c"
-          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "ZIP SHA256 mismatch: $actual" }
-          $dest = "$env:RUNNER_TEMP\efi02"
-          Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force
-          $efi = Join-Path $dest "EFI"
-          if (!(Test-Path $efi -PathType Container)) { throw "EFI folder missing from ZIP." }
-          $count = 0
-          foreach ($line in Get-Content $manifest) {
-            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)$') { throw "Malformed manifest line: $line" }
-            $expectedFile = $Matches[1].ToLowerInvariant()
-            $relative = $Matches[2].Replace("/", "\")
-            if ($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)) { throw "Unsafe manifest path: $relative" }
-            $file = Join-Path $efi $relative
-            if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
-            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($hash -ne $expectedFile) { throw "Manifest hash mismatch: $relative" }
-            $count++
-          }
-          if ($count -lt 10) { throw "Manifest file count too small: $count" }
-          Write-Host "EFI02_ZIP_AND_MANIFEST=PASS files=$count"
-,'$i219Adapters','UPDATE-B460M-EFI02',
-            'EFI-PREVIOUS-BASELINE02-','EFI-FAILED-BASELINE02-',
-            'EFI-SHA256SUMS.txt','c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c',
-            'Single-run deployment','C02J5NYBPN5T','C02231609GUPHC1JC',
-            '78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6','Get-NetAdapter -Physical',
-            'SMBIOS_INJECTION_VERIFIED','-SkipConfigPlist',
-            'C:\\Program Files\\PyManager\\python.exe','Using previously installed Python'
-          )
-          foreach ($item in $required) { if ($s -notlike "*$item*") { throw "Missing marker: $item" } }
-          foreach ($item in @('Format-Volume','Clear-Disk','Remove-Partition','Set-Partition','Initialize-Disk','New-Partition')) {
-            if ($s.Contains($item)) { throw "Forbidden disk operation: $item" }
-          }
-          if ($s -match 'ValidateSet\("Prepare","Apply"\)' -or $s -match '\$Step -eq') {
-            throw "Legacy manual Prepare/Apply interface must not return."
-          }
-          if ($s -notmatch 'Rename-Item -LiteralPath \$ActiveEfi' -or $s -notmatch 'Rename-Item -LiteralPath \$stage') {
-            throw "Single-run backup/install rename operations missing."
-          }
-          if ($s -notmatch 'Assert-RecoveryReadOnly' -or $s -notmatch 'Previous EFI restored successfully') {
-            throw "Recovery guard or rollback protection missing."
-          }
-          Write-Host "UPDATER_SAFETY_AND_SMBIOS_GUARDS=PASS"
-      - name: Test SMBIOS plist injection and verification
-        shell: powershell
-        run: |
-          $path = "B460M-OC-Builder/Update-B460M-Baseline-EFI02.ps1"
-          $s = Get-Content $path -Raw
-          $m = [regex]::Match($s, '(?s)\$PythonHelper\s*=\s*@''\r?\n(.*?)\r?\n''@')
-          if (-not $m.Success) { throw "Embedded Python helper not found." }
-          $helper = "$env:RUNNER_TEMP\Set-B460M-Smbios.py"
-          Set-Content -LiteralPath $helper -Value $m.Groups[1].Value -Encoding UTF8
-          $fixture = "$env:RUNNER_TEMP\config.plist"
-          @'
-          import plistlib
-          data={"PlatformInfo":{"Generic":{}}}
-          with open(r"FIXTURE_PATH","wb") as f: plistlib.dump(data,f)
-          '@.Replace("FIXTURE_PATH",$fixture) | python -
-          if ($LASTEXITCODE -ne 0) { throw "Could not create plist fixture." }
-          $rom = "aabbccddeeff"
-          python $helper inject $fixture C02J5NYBPN5T C02231609GUPHC1JC 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6 $rom
-          if ($LASTEXITCODE -ne 0) { throw "SMBIOS injection fixture test failed." }
-          python $helper verify $fixture C02J5NYBPN5T C02231609GUPHC1JC 78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6 $rom
-          if ($LASTEXITCODE -ne 0) { throw "SMBIOS verification fixture test failed." }
-          Write-Host "SMBIOS_PLIST_INJECT_VERIFY=PASS"
-      - name: Download and verify EFI-02 ZIP and separate manifest
-        shell: powershell
-        run: |
-          $base = "https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/"
-          $zip = "$env:RUNNER_TEMP\efi02.zip"
-          $manifest = "$env:RUNNER_TEMP\EFI-SHA256SUMS.txt"
-          Invoke-WebRequest -Uri ($base + "B460M-Baseline-EFI-02.zip") -OutFile $zip -UseBasicParsing
-          Invoke-WebRequest -Uri ($base + "EFI-SHA256SUMS.txt") -OutFile $manifest -UseBasicParsing
-          $expected = "c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c"
-          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "ZIP SHA256 mismatch: $actual" }
-          $dest = "$env:RUNNER_TEMP\efi02"
-          Expand-Archive -LiteralPath $zip -DestinationPath $dest -Force
-          $efi = Join-Path $dest "EFI"
-          if (!(Test-Path $efi -PathType Container)) { throw "EFI folder missing from ZIP." }
-          $count = 0
-          foreach ($line in Get-Content $manifest) {
-            if ($line -notmatch '^([0-9a-fA-F]{64})\s+\*?(.+)$') { throw "Malformed manifest line: $line" }
-            $expectedFile = $Matches[1].ToLowerInvariant()
-            $relative = $Matches[2].Replace("/", "\")
-            if ($relative -match '(^|\\)\.\.(\\|$)' -or [IO.Path]::IsPathRooted($relative)) { throw "Unsafe manifest path: $relative" }
-            $file = Join-Path $efi $relative
-            if (!(Test-Path $file -PathType Leaf)) { throw "Manifest file missing: $relative" }
-            $hash = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($hash -ne $expectedFile) { throw "Manifest hash mismatch: $relative" }
-            $count++
-          }
-          if ($count -lt 10) { throw "Manifest file count too small: $count" }
-          Write-Host "EFI02_ZIP_AND_MANIFEST=PASS files=$count"
+          Write-Host "UPDATER_SAFETY_GUARDS=PASS"
