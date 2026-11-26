@@ -12,7 +12,6 @@ $DiskBytes = [int64]128035676160
 $EspGuid = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
 $ArtifactUrl = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-same-board-keyboard-reference/B460M-Same-Board-Keyboard-Reference-EFI.zip'
 $ArtifactSha256 = '996405a64a7352a868a13208913448c8d10cc16ac556b2a24fec2b58428059f8'
-$KnownBaseline = 'EFI-PREVIOUS-RX570-VESA-DIAGNOSTIC'
 $RunSuffix = [guid]::NewGuid().ToString('N').Substring(0,8)
 $BackupName = 'EFI-PREVIOUS-SAME-BOARD-REFERENCE-BASELINE-' + $RunSuffix
 $StageName = 'EFI-SAME-BOARD-REFERENCE-STAGING-' + $RunSuffix
@@ -25,7 +24,6 @@ function Get-Sha([string]$Path) { (Get-FileHash -LiteralPath $Path -Algorithm SH
 
 $Root = $Drive + ':\'
 $Current = Join-Path $Root 'EFI'
-$Baseline = Join-Path $Root $KnownBaseline
 $Backup = Join-Path $Root $BackupName
 $Stage = Join-Path $Root $StageName
 $Failed = Join-Path $Root $FailedName
