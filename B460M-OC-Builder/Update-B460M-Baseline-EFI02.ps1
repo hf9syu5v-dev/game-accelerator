@@ -65,12 +65,29 @@ else:
 '@
 
 function Get-PythonCommand {
+    # Previously verified on this Windows PC: Python 3.15.2 via PyManager.
+    $candidates = @(
+        "C:\Program Files\PyManager\python.exe"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $version = & $candidate --version 2>&1
+            if ($LASTEXITCODE -eq 0 -and ($version -match '^Python 3\.')) {
+                Write-Host "Using previously installed Python: $candidate ($version)" -ForegroundColor Green
+                return $candidate
+            }
+        }
+    }
     $cmd = Get-Command python.exe -ErrorAction SilentlyContinue
     if (-not $cmd) { $cmd = Get-Command python -ErrorAction SilentlyContinue }
-    if (-not $cmd) { throw "Python 3 is required for safe plist editing. Install Python 3 and ensure python.exe is on PATH, then rerun." }
-    $v = & $cmd.Source --version 2>&1
-    if ($LASTEXITCODE -ne 0 -or ($v -notmatch 'Python 3\.')) { throw "Python 3 is required; detected: $v" }
-    return $cmd.Source
+    if ($cmd) {
+        $version = & $cmd.Source --version 2>&1
+        if ($LASTEXITCODE -eq 0 -and ($version -match '^Python 3\.')) {
+            Write-Host "Using Python from PATH: $($cmd.Source) ($version)" -ForegroundColor Green
+            return $cmd.Source
+        }
+    }
+    throw "Python 3 was not found at the previously verified PyManager path or on PATH. No USB changes have been made."
 }
 function Assert-UsbIdentity {
     if (-not (Test-Path -LiteralPath $Root -PathType Container)) { throw "Drive $($DriveLetter): is not available." }
