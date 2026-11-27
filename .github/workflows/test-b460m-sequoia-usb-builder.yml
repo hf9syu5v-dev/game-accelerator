@@ -49,5 +49,5 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
-          & $scriptPath -SelfTest
+          & $scriptPath -SelfTest -Verbose
           if (-not $?) { throw "BUILDER_SELFTEST_FAILED" }
