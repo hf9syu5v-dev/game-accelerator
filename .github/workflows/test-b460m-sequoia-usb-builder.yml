@@ -31,7 +31,43 @@ jobs:
           $input.Dispose(); $gzip.Dispose(); $output.Dispose()
           $builderText = Get-Content -LiteralPath $scriptPath -Raw
           Write-Host '--- SELFTEST SOURCE LINES ---'
-          $builderText -split "`r?`n" | Select-String -Pattern 'vhdDisk|virtualDisk|Get-Disk|Get-Partition|beforeNumbers|DiskPart|diskpart' | ForEach-Object { Write-Host ("SOURCE: " + $_.Line) }
+          [regex]::Matches($builderText,'(?m)^.*(?:vhdDisk|virtualDisk|Get-Disk|Get-Partition|beforeNumbers|DiskPart|diskpart).*
+          Write-Host '--- END SELFTEST SOURCE ---'
+          $builderText = $builderText.Replace('$partition = Get-Partition -DriveLetter $letter -ErrorAction Stop', '$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))' + "`r`n" + '        $partition = @($vhdPartitions | Where-Object { [string]$_.DriveLetter -eq $letter })')
+          $builderText = $builderText.Replace('$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))', '$allDisks = @(Get-Disk | Select-Object Number,FriendlyName,BusType,Size,PartitionStyle)' + "`r`n" + '        Write-Host (''ALL_DISKS={0}'' -f (($allDisks | ForEach-Object { ''N={0},Name={1},Bus={2},Size={3},Style={4}'' -f $_.Number,$_.FriendlyName,$_.BusType,$_.Size,$_.PartitionStyle }) -join '' | ''))' + "`r`n" + '$logicalMap = @(Get-CimInstance Win32_LogicalDiskToPartition -ErrorAction Stop | Where-Object { $_.Dependent -match (''DeviceID="'' + $letter + '':"'') })' + "`r`n" + '        Write-Host (''LOGICAL_MAP={0}'' -f ($logicalMap | Out-String))' + "`r`n" + '$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))')
+          $builderText = $builderText.Replace('$volume = Get-Volume -DriveLetter $letter -ErrorAction Stop', '$volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID=''{0}:''" -f $letter) -ErrorAction Stop')
+          $builderText = $builderText.Replace('$vhdDiskNumber = [int]$virtualDisks[0].Number', '$vhdDiskNumber = [int]$virtualDisks[0].Number' + "`r`n" + '        Write-Host (''VHD_DISK_NUMBER={0}; NAME={1}; SIZE={2}; BUS={3}; BEFORE={4}'' -f $virtualDisks[0].Number,$virtualDisks[0].FriendlyName,$virtualDisks[0].Size,$virtualDisks[0].BusType,($beforeNumbers -join '',''))')
+          $builderText = $builderText.Replace('$volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID=''{0}:''" -f $letter) -ErrorAction Stop', '$volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID=''{0}:''" -f $letter) -ErrorAction Stop' + "`r`n" + '        Write-Host (''VHD_PARTITIONS={0}; ESP_MATCHES={1}; GPT={2}; PART_LETTER={3}; FS={4}; LABEL={5}'' -f $vhdPartitions.Count,$partition.Count,$partition[0].GptType,$partition[0].DriveLetter,$volume.FileSystem,$volume.VolumeName)')
+          $builderText = $builderText.Replace('if ($partition.DiskNumber -ne $vhdDiskNumber -or ([string]$partition.GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid -or $volume.FileSystem -ne ''FAT32'' -or $volume.FileSystemLabel -ne ''OC-SEQUOIA'') {', 'if ($vhdPartitions.Count -ne 1 -or $partition.Count -ne 1 -or ([string]$partition[0].GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid -or !$volume -or $volume.FileSystem -ne ''FAT32'' -or $volume.VolumeName -ne ''OC-SEQUOIA'') {')
+          $builderText = $builderText.Replace('$volume = Get-Volume -DriveLetter $availableLetter -ErrorAction Stop', '$createdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$targetAgain.Number))' + "`r`n" + '    $espMatches = @($createdPartitions | Where-Object { [string]$_.DriveLetter -eq $availableLetter })' + "`r`n" + '    $volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID=''{0}:''" -f $availableLetter) -ErrorAction Stop')
+          $builderText = $builderText.Replace('$partition = Get-Partition -DriveLetter $availableLetter -ErrorAction Stop', '')
+          $builderText = $builderText.Replace('if ($partition.DiskNumber -ne $targetAgain.Number -or ([string]$partition.GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid -or $volume.FileSystem -ne ''FAT32'' -or $volume.FileSystemLabel -ne ''OC-SEQUOIA'') {', 'if ($createdPartitions.Count -ne 1 -or $espMatches.Count -ne 1 -or ([string]$espMatches[0].GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid -or !$volume -or $volume.FileSystem -ne ''FAT32'' -or $volume.VolumeName -ne ''OC-SEQUOIA'') {')
+          $builderText = $builderText.Replace('Write-Verbose $_','Write-Host $_')
+          $builderText = $builderText.Replace("    Invoke-VirtualDiskLayoutSelfTest", "    Remove-Item Function:\\Get-CimInstance -ErrorAction Stop`r`n    Invoke-VirtualDiskLayoutSelfTest")
+          [System.IO.File]::WriteAllText($scriptPath,$builderText,(New-Object System.Text.UTF8Encoding($false)))
+          if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
+          Write-Host "BUILDER_FIXTURE_RESTORED=$scriptPath"
+      - name: Parse complete builder with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Host
+            throw 'FULL_BUILDER_POWERSHELL_51_PARSE_FAILED'
+          }
+          Write-Host 'FULL_BUILDER_POWERSHELL_51_PARSE=PASS'
+      - name: Run isolated builder self-tests (no physical disk access)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
+          & $scriptPath -SelfTest -Verbose
+          if (-not $?) { throw "BUILDER_SELFTEST_FAILED" }
+) | ForEach-Object { Write-Host ("SOURCE: " + $_.Value) }
           Write-Host '--- END SELFTEST SOURCE ---'
           $builderText = $builderText.Replace('$partition = Get-Partition -DriveLetter $letter -ErrorAction Stop', '$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))' + "`r`n" + '        $partition = @($vhdPartitions | Where-Object { [string]$_.DriveLetter -eq $letter })')
           $builderText = $builderText.Replace('$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))', '$allDisks = @(Get-Disk | Select-Object Number,FriendlyName,BusType,Size,PartitionStyle)' + "`r`n" + '        Write-Host (''ALL_DISKS={0}'' -f (($allDisks | ForEach-Object { ''N={0},Name={1},Bus={2},Size={3},Style={4}'' -f $_.Number,$_.FriendlyName,$_.BusType,$_.Size,$_.PartitionStyle }) -join '' | ''))' + "`r`n" + '$logicalMap = @(Get-CimInstance Win32_LogicalDiskToPartition -ErrorAction Stop | Where-Object { $_.Dependent -match (''DeviceID="'' + $letter + '':"'') })' + "`r`n" + '        Write-Host (''LOGICAL_MAP={0}'' -f ($logicalMap | Out-String))' + "`r`n" + '$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))')
