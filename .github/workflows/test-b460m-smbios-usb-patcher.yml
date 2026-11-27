@@ -1,0 +1,53 @@
+name: Validate temporary SMBIOS USB patcher (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Write-B460M-SMBIOS-Test-To-USB.ps1"
+      - ".github/workflows/test-b460m-smbios-usb-patcher.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'tools/Write-B460M-SMBIOS-Test-To-USB.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p).Path,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Host; throw 'SMBIOS_POWERSHELL_51_PARSE_FAILED' }
+          Write-Host 'SMBIOS_POWERSHELL_51_PARSE=PASS'
+          Write-Host ('SMBIOS_SCRIPT_SHA256=' + (Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant())
+      - name: Run production patcher self-test
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'tools/Write-B460M-SMBIOS-Test-To-USB.ps1' -SelfTest
+          if (-not $?) { throw 'SMBIOS_PRODUCTION_SELFTEST_FAILED' }
+          Write-Host 'SMBIOS_PRODUCTION_SELFTEST=PASS'
+      - name: Static non-destructive safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $s = Get-Content 'tools/Write-B460M-SMBIOS-Test-To-USB.ps1' -Raw
+          foreach ($x in @('Get-Disk','Get-CimInstance Win32_DiskDrive','Get-Partition -DiskNumber','Get-Volume -DriveLetter','IsBoot','IsSystem','USBSTOR','pre-test-smbios-','Copy-Item -LiteralPath $config -Destination $backup','TARGET_USB_MUST_HAVE_EXACTLY_ONE_PREPARED_ESP','UTBMAP_PORT_COUNT_NOT_11','UNEXPECTED_CONFIG_MUTATION')) {
+            if (-not $s.Contains($x)) { throw "SMBIOS_REQUIRED_GUARD_MISSING=$x" }
+          }
+          if ($s -match '(?im)^\s*(Clear-Disk|Format-Volume|Initialize-Disk|New-Partition|Remove-Partition)\b') { throw 'SMBIOS_FORBIDDEN_DISK_MUTATION_CMDLET' }
+          if ($s -match '(?i)diskpart\.exe|mountvol\.exe|Set-Disk') { throw 'SMBIOS_UNEXPECTED_DISK_MUTATION_TOOL' }
+          foreach ($x in @('C02J5NYBPN5T','C02231609GUPHC1JC','78BDA777-E7DE-493E-BB3C-DE76B4D3AEE6','000000123ADC')) {
+            if ($s.Contains($x)) { throw 'SMBIOS_PRIVATE_DEVICE_IDENTIFIER_MUST_NOT_BE_IN_REPOSITORY' }
+          }
+          Write-Host 'SMBIOS_STATIC_SAFETY_AUDIT=PASS'
+      - name: Publish exact generic tested source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-SMBIOS-USB-Patcher-tested-source
+          path: tools/Write-B460M-SMBIOS-Test-To-USB.ps1
+          if-no-files-found: error
