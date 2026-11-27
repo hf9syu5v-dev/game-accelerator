@@ -23,13 +23,14 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $encoded = (Get-Content 'tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1.gz.b64' -Raw).Trim()
           $compressed = [Convert]::FromBase64String($encoded)
-          $input = New-Object System.IO.MemoryStream(,$compressed)
-          $gzip = New-Object System.IO.Compression.GzipStream($input,[System.IO.Compression.CompressionMode]::Decompress)
-          $output = New-Object System.IO.MemoryStream
-          $gzip.CopyTo($output)
+          $inputStream = New-Object System.IO.MemoryStream(,$compressed)
+          $gzipStream = New-Object System.IO.Compression.GzipStream($inputStream,[System.IO.Compression.CompressionMode]::Decompress)
+          $outputStream = New-Object System.IO.MemoryStream
+          $gzipStream.CopyTo($outputStream)
+          Write-Host ('R3_FIXTURE_ENCODED_CHARS=' + $encoded.Length + '; COMPRESSED_BYTES=' + $compressed.Length + '; DECOMPRESSED_BYTES=' + $outputStream.Length)
           $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
-          [System.IO.File]::WriteAllBytes($scriptPath,$output.ToArray())
-          $input.Dispose(); $gzip.Dispose(); $output.Dispose()
+          [System.IO.File]::WriteAllBytes($scriptPath,$outputStream.ToArray())
+          $inputStream.Dispose(); $gzipStream.Dispose(); $outputStream.Dispose()
           $actual = (Get-FileHash -LiteralPath $scriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
           $expected = 'ccede6f1a50debddbfa46a819e97385c8b1c0dab3c03749247e0d0fc42bf3ff8'
           Write-Host "R3_BUILDER_SHA256=$actual"
