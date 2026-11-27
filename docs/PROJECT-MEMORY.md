@@ -331,3 +331,18 @@
 - 新增只读诊断脚本 tools/Diagnose-B460M-USB-CIM-Match.ps1，本地路径 /mnt/data/Diagnose-B460M-USB-CIM-Match.ps1，SHA-256 e372670a96b773879aa536934152df7d540dc07fff13b936c263c93e13d7c3e3。输出Get-Disk和Win32_DiskDrive候选设备的原始/Trim后型号、序列号、字符串长度、容量、PNPDeviceID、接口类型，以及逐字段布尔匹配结果；无清盘、分区、初始化或写入磁盘命令。
 - 已提交只读诊断脚本和Windows Server 2022 workflow：Run 46072232673，提交57d1d2ebbdddf144ab2baa56d5919dacce374cc2，结论success。日志步骤确认Windows PowerShell 5.1 Parser通过，且静态只读检查通过。此CI只验证脚本语法和无写盘命令，不验证用户电脑设备属性。
 - 当前下一步：用户下载该诊断PS1至辅助电脑Downloads目录，以管理员Windows PowerShell 5.1运行并回传完整输出。根据CIM字段匹配结果修订清盘脚本；在原因确定前，不要再次运行清盘脚本或USB构建器。
+
+## 31. 2026-11-28 USB CIM身份核验根因查明与Reset脚本r2验证
+- 用户回传只读诊断结果，确认辅助电脑目标USB为Get-Disk Disk 1：FriendlyName Samsung SSD 860 EVO、BusType USB、序列号000000123ADC、容量250059350016字节、非启动/系统盘。
+- 对应Win32_DiskDrive记录为Index=1、DeviceID `\\.\PHYSICALDRIVE1`、Model Samsung SSD 860 EVO USB Device、SerialNumber 000000123ADC、InterfaceType USB、PNPDeviceID以USBSTOR开头、Size 250056737280字节。Get-Disk与CIM容量差2,612,736字节（约2.49MiB），不是同一容量字段的精确值。
+- 辅助电脑Disk 0是SATA/IDE Windows系统盘，序列号S3YLNX0K912272X、IsBoot=True、IsSystem=True；诊断结果中它的CIM型号也满足Samsung型号前缀，但序列号、Index/DeviceID、接口和PNP均与目标USB不符。必须保护Disk 0。
+- 原Reset脚本失败根因已明确：它把CIM Model、SerialNumber、Size做严格比较，却没有使用Win32_DiskDrive.Index/DeviceID关联Get-Disk.Number；同时要求CIM Size与Get-Disk.Size逐字节相等。实际USB身份完全匹配，但容量提供程序之间有约2.49MiB差异，因此错误地安全停止。
+- 新脚本 `tools/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1` 已提交main。身份核验同时要求：Get-Disk USB总线、Samsung型号前缀、序列号精确匹配、225–240GB容量范围、非Boot/System/Offline/ReadOnly；CIM必须同时满足Index=Get-Disk.Number、DeviceID精确为对应PHYSICALDRIVE路径、Model前缀、SerialNumber精确、InterfaceType=USB、PNPDeviceID以USBSTOR开头、CIM容量位于同一容量范围，并且两接口容量差不超过16MiB。执行破坏性操作前重新核验两套API及F盘保护，并要求输入完整精确确认语句。保留DiskPart clean后初始化GPT、移除Windows自动创建的隐藏MSR、最终验证GPT零分区的流程。
+- 新脚本SelfTest覆盖真实报告中的2.5MiB容量差应通过、错误物理盘Index拒绝、错误DeviceID拒绝、错误序列号拒绝、非USB接口拒绝、超过16MiB容量差拒绝。
+- GitHub Actions Windows Server 2022 / Windows PowerShell 5.1：
+  - Run 46072752393（commit 99952e1b07187de8ffbd8ac32fd0ed51c49169d4）success：完整脚本Parser通过，身份匹配SelfTest全部通过。
+  - 首个VHD集成测试Run 46072756613失败，原因仅为workflow中DiskPart select vdisk参数引用格式错误，未进入测试磁盘clean阶段；随后修复测试workflow。
+  - Run 46072844033（commit 8f172c714a6233b697ea2a232fd3260a94bf3269）success：Windows PowerShell 5.1 Parser、全部身份SelfTest通过；在GitHub runner一次性VHD上实际DiskPart clean、Initialize-Disk GPT、识别并移除隐藏MSR，最终验证GPT且零分区，日志标记DISPOSABLE_VHD_GPT_ZERO_PARTITIONS=PASS。VHD为runner临时测试盘，不是用户实体Samsung USB。
+- 本地交付文件 `/mnt/data/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1` 已从GitHub main文件内容逐字节恢复核对，Git blob SHA与仓库一致：`9cdb9d0abbd109199c2757755e948153da84fa89`；本地文件SHA-256：`432b7327f00594a1c6c843dae5d4b75ae15b4d8854b4c57e242cd5518f337929`。Windows PowerShell 5.1 Parser与身份SelfTest由Run 46072752393及46072844033验证；空GPT流程由Run 46072844033临时VHD验证。
+- 当前状态：r2脚本已通过Windows PowerShell 5.1 Parser、身份单元测试和临时VHD空GPT端到端测试，可以交付给用户；此前旧版Reset脚本SHA d18e607...已被证实因比较逻辑错误而安全停止，用户不得再次运行旧版。用户辅助电脑实体USB尚未清盘，未输入确认前不应执行任何写盘操作。
+- 下一步：按PowerShell两步法提供r2脚本本地下载文件，再给独立执行命令。用户运行后回传完整输出；只有看到 `RESET_VERIFIED=PASS` 和 `TARGET_STATE=GPT with zero partitions` 后，才继续检查/运行USB builder。不要把CI/VHD测试描述成实体USB清盘或目标机实机启动成功。
