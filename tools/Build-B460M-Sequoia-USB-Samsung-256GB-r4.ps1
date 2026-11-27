@@ -442,14 +442,11 @@ m.verify_image(sys.argv[2],sys.argv[3])
     )
     $report | Set-Content -LiteralPath (Join-Path $usbRoot 'USB-BUILD-REPORT.txt') -Encoding ASCII
 
-    # Remove the temporary drive letter using DiskPart; Windows Storage cmdlets may hide ESP paths.
-    $removeDp = Join-Path $work 'remove-esp-letter.txt'
-    @("select volume=$espVolumeNumber",'remove letter=' + $espLetter,'exit') | Set-Content -LiteralPath $removeDp -Encoding ASCII
-    $removeOut = @(& diskpart.exe /s $removeDp 2>&1 | ForEach-Object { [string]$_ })
-    $removeOut | ForEach-Object { Write-Host $_ }
-    if ($LASTEXITCODE -ne 0 -or (($removeOut -join [Environment]::NewLine) -notmatch '(?i)(成功地删除|successfully removed)')) {
-        Stop-Build 'TEMPORARY_ESP_DRIVE_LETTER_REMOVE_FAILED'
-    }
+    # Remove the temporary drive letter with mountvol; it works even when the Storage provider hides ESP paths.
+    & mountvol.exe ($espLetter + ':') /D
+    if ($LASTEXITCODE -ne 0) { Stop-Build 'TEMPORARY_ESP_DRIVE_LETTER_REMOVE_FAILED' }
+    Start-Sleep -Seconds 1
+    if (Test-Path -LiteralPath ($espLetter + ':\')) { Stop-Build 'TEMPORARY_ESP_DRIVE_LETTER_STILL_PRESENT' }
     $checkDisk = Get-Disk -Number $targetDisk.Number -ErrorAction Stop
     $checkParts = @(Get-StoragePartitions ([uint32]$targetDisk.Number))
     if ($checkDisk.PartitionStyle -ne 'GPT' -or $checkParts.Count -ne 1 -or
@@ -481,11 +478,8 @@ catch {
     exit 1
 }
 finally {
-    if ($espLetter -and $espPartition) {
-        try {
-            $access = $espLetter + ':\'
-            Remove-PartitionAccessPath -DiskNumber $targetDisk.Number -PartitionNumber $espPartition.PartitionNumber -AccessPath $access -ErrorAction SilentlyContinue
-        } catch {}
+    if ($espLetter) {
+        try { & mountvol.exe ($espLetter + ':') /D | Out-Null } catch {}
     }
     if (Test-Path -LiteralPath $work) {
         Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
