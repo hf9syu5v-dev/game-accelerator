@@ -30,7 +30,7 @@ function Get-CimInstance {
     if ($Namespace -ne 'root/Microsoft/Windows/Storage' -or
         $ClassName -ne 'MSFT_Partition' -or
         $null -ne $Filter -or
-        $ErrorAction -ne 'Stop') {
+        $null -ne $Filter) {
         throw 'MOCK_QUERY_ARGUMENTS_MISMATCH'
     }
     return $script:MockPartitions
