@@ -221,3 +221,14 @@
 - 本次CI只验证了回归测试脚本自身的PowerShell 5.1语法，以及Get-TargetPartitions函数的模拟行为；没有解析或运行/mnt/data中的完整USB构建脚本，也没有进行完整Windows VM端到端构建测试。不得把该CI PASS描述为完整构建脚本已通过PowerShell解析或USB写盘测试。
 - 本地修订脚本仍为/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1，SHA-256 f137d3ad339f4daf87203c55870eaf67004be3a76db3636b28bd62f0430b86b2；尚未向用户重新发布为可执行交付。
 - 当前决定：空盘检测修复逻辑的Windows PowerShell 5.1回归测试和GitHub Actions测试通过；完整脚本的解析/端到端安全测试仍待完成。在完整验证前，用户不要执行修订脚本，不对Disk 1进行任何手动格式化或分区操作。
+
+
+## 20. 2026-11-28 新窗口恢复核查与“继续黑苹果项目分析 (37)”资料边界
+- 本轮开始时重新读取GitHub main分支docs/PROJECT-MEMORY.md；读取时文件blob SHA为3e2bba7dc562321770c10114823c4830d1fde5ec，内容已包含第1–19节及空盘检测修复记录。
+- 重新核对main分支HEAD：4fe163a82e5907d5b68891a38fa7bcdbd9d8b2e6（提交信息docs: record PowerShell 5.1 empty-disk regression CI result）。此前对话中出现的802f7aed并非本次读取到的main HEAD，不再作为当前仓库版本依据。
+- 用户要求总结“继续黑苹果项目分析 (37)”。本次可用上下文未包含该标题窗口的聊天正文或完整导出；项目文件检索也未找到该窗口记录。因此本节不伪造其内容。后续取得该窗口导出/内容后再补充摘要，并注明来源。当前只可总结本窗口用户新提供的错误输出、可见项目历史摘要及本次GitHub实际核查结果。
+- 复核GitHub Actions run 46063517821：status=completed、conclusion=success，workflow为Test empty-disk partition query (Windows PowerShell 5.1)，head SHA 590e7a3ec6333fcf24cf9c4a2d0f8829570dc700。Job在Windows Server 2022执行独立tests/powershell/Get-TargetPartitions.Tests.ps1；步骤为解析该测试文件并运行模拟空盘/非空盘/CIM provider故障测试。
+- 该workflow没有解析或运行本地完整Build-B460M-Sequoia-USB-Samsung-256GB.ps1，也没有真实Windows VM端到端构建、目标USB识别/写入测试。故只能认定Get-TargetPartitions回归逻辑通过Windows PowerShell 5.1模拟测试，不能认定完整制作脚本通过。
+- 当前运行容器中未发现/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1和/mnt/data/B460M-Baseline-EFI-02.zip；此前会话提及的本地sandbox文件不能直接视为本轮仍存在。重新交付前必须重新生成文件并核验SHA及实际内容。
+- 最新用户提供的PowerShell错误为：在Disk 1空分区状态查询时，Get-Partition抛出“找不到任何DiskNumber属性等于1的MSFT_Partition对象”；脚本随即BUILD_STOPPED。依据日志顺序，失败发生在写盘前，未执行DiskPart clean/格式化/分区操作。Disk 1仍是辅助电脑上用户确认的USB Samsung SSD 860 EVO（约232.89GiB/标称250GB）安装介质；Disk 0辅助电脑Windows系统盘永久保护；E:/F:及其保护目录不触碰。
+- 本轮下一步：重新取得EFI02 artifact并重新构建可审计的本地脚本；将完整脚本纳入Windows PowerShell 5.1 Parser测试和隔离模拟测试（不得提交真实SMBIOS、真实设备序列号或私有标识）；检查所有路径/依赖/异常分支和写盘前后保护机制；尽可能在GitHub Actions Windows runner执行完整脚本的非破坏性测试。完整脚本未通过前不向用户发布可执行脚本、不要求用户运行、不对USB做任何写入。
