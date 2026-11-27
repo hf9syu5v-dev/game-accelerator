@@ -70,9 +70,9 @@ jobs:
           @("select disk $($d.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$letter",'select partition 1','detail partition','exit') | Set-Content -LiteralPath $dp -Encoding ASCII
           $out = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
           if ($LASTEXITCODE -ne 0) { throw 'R4_VHD_ESP_CREATE_FAILED' }
-          $line = $out | Where-Object { $_ -match '(?i)^\s*\*?\s*(?:卷|Volume)\s+\d+\s+[A-Z]\s+OC-SEQUOIA\s+FAT32\b' }
+          $line = $out | Where-Object { $_ -match '(?i)(?:卷|Volume)\s+\d+\s+[A-Z]\s+OC-SEQUOIA\s+FAT32\b' }
           if (@($line).Count -ne 1) { $out | Write-Host; throw 'R4_VHD_DETAIL_VOLUME_NOT_FOUND' }
-          if ($line -notmatch '(?i)^\s*(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') { throw 'R4_VHD_DETAIL_VOLUME_PARSE_FAILED' }
+          if ($line -notmatch '(?i)(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') { throw 'R4_VHD_DETAIL_VOLUME_PARSE_FAILED' }
           $volumeNumber = $Matches[1]
           if (-not (Test-Path ($letter + ':\\') -PathType Container)) { throw 'R4_VHD_DRIVE_LETTER_NOT_ACCESSIBLE' }
           Set-Content -LiteralPath ($letter + ':\\R4-TEST.txt') -Value 'copy-access-pass'
