@@ -188,3 +188,12 @@
 3. 构建成功后，将USB接入ASUS TUF GAMING B460M-PLUS，首次只测试能否显示OpenCore Picker；不要在本轮自动抹除HP NVMe。
 4. 目标机从Recovery启动后，先在磁盘工具“显示所有设备”中识别HP NVMe的实际型号和容量，再确认物理设备后抹为GUID/APFS/Sequoia；Samsung 860 EVO SATA系统盘安装期间物理断开。
 5. 每次关键变更继续更新本文件；不把临时SMBIOS值写入公开GitHub。
+
+
+## 17. 2026-11-28 新构建脚本最终文件校验更正
+- 最终版脚本已在本轮再次修正并重新静态检查；以此节为准，覆盖第16节最初记录的脚本SHA。
+- 最终文件：/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1；大小21,442 bytes；SHA-256 0dd4f9d379719f43687ec2275316958f2588a8da510ebd3fe7fdeb5e03cc5ba6。
+- EFI02本地包：/mnt/data/B460M-Baseline-EFI-02.zip；大小4,647,868 bytes；SHA-256 baab37149a72b7a373adb92c6b575523bb97d57780cefb04f7ac9e7e2ad08271。
+- 最终脚本内嵌Python补丁已在实际EFI02包的临时解压副本上再次执行成功，返回EFI02_LOCAL_PATCH_AND_STRUCTURAL_CHECK=PASS；验证ROM为6字节Data、UTBMap=11、XhciPortLimit=False、Picker Timeout=0、ScanPolicy=0x200703。
+- 最终静态检查：PowerShell 5.1/Admin要求、型号/串号/USB总线/容量匹配、CIM交叉核对、启动/系统盘排除、目标无分区前置条件、动态G:–Z:盘符（排除E:/F:）、精确确认短语、EFI与OpenCore包SHA校验、Sequoia Board-ID、括号平衡均通过。
+- 当前执行环境无Windows PowerShell运行时，不能宣称PowerShell解析或实机执行已通过。用户在辅助电脑以管理员身份运行后，先观察只读识别/下载校验阶段；只有所有检查通过并输入精确确认短语后才会格式化USB。
