@@ -254,3 +254,10 @@
 - 该CI通过的是fixture恢复后应用同一ESP/MSR核验修复的脚本测试，以及独立VHD端到端DiskPart测试；并非对用户辅助电脑的Samsung USB实盘写入测试。不得声称用户USB已经制作完成或黑苹果实机启动成功。
 - 当前本地EFI包：/mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip，SHA-256 `e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680`。包含此前确认的EFI02配置及用户批准的临时测试SMBIOS；严禁提交到公开GitHub或把实际三码写入项目记忆。
 - 下一步：重新核验两个本地交付文件的存在及哈希，发布PS1与EFI ZIP下载；用户下载到辅助电脑Downloads目录后，才可按两步法运行。运行时先观察设备型号、容量、USB总线、序列号及分区识别输出，确认目标为已批准的Samsung USB后再键入脚本要求的精确确认语句。Disk 0、E:/F:、HP NVMe和目标机SATA原系统盘保护规则不变。
+
+
+## 23. 2026-11-28 本地交付文件核验
+- 已在当前运行容器中确认交付文件真实存在：`/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1`（23,245 bytes，SHA-256 `6e82387cad40be715bbad79f316aded0f39093f1eea48b8f33022808028482aa`）；`/mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip`（4,637,288 bytes，SHA-256 `e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680`）。
+- EFI ZIP完整性检查PASS，60个条目，EFI/BOOT/BOOTx64.efi、EFI/OC/OpenCore.efi、EFI/OC/config.plist三个关键路径存在。
+- GitHub Actions Run `46067207584` 已通过Windows Server 2022 / Windows PowerShell 5.1脚本解析、模拟空盘/非空盘/CIM异常测试及独立VHD GPT/ESP+MSR/FAT32布局验证。该验证不等于辅助电脑真实Samsung USB已写入。
+- 当前已准备向用户交付两个本地文件；用户必须将二者放在辅助电脑Downloads同一目录，管理员Windows PowerShell 5.1中单独执行脚本。执行时首先核对实际设备型号、容量、USB BusType和序列号，未出现精确目标身份及用户确认之前不会执行DiskPart clean。
