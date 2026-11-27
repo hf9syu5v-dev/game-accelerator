@@ -50,7 +50,9 @@ jobs:
           '@
           $partitionFunctionPattern = '(?s)function Get-TargetPartitions \{.*?\r?\n\}\r?\n\r?\nfunction Test-TargetDiskIdentity \{'
           $partitionFunctionReplacement = $newPartitionFunction + "`r`n`r`nfunction Test-TargetDiskIdentity {"
-          $builderText = [regex]::Replace($builderText,$partitionFunctionPattern,$partitionFunctionReplacement,1)
+          $partitionMatch = [regex]::Match($builderText,$partitionFunctionPattern)
+          if (-not $partitionMatch.Success) { throw 'PARTITION_FUNCTION_PATTERN_NOT_FOUND' }
+          $builderText = $builderText.Substring(0,$partitionMatch.Index) + $partitionFunctionReplacement + $builderText.Substring($partitionMatch.Index + $partitionMatch.Length)
           if ($builderText -notmatch 'Get-CimInstance -Namespace .root/Microsoft/Windows/Storage. -ClassName .MSFT_Partition. -ErrorAction Stop') { throw 'NEW_PARTITION_FUNCTION_PATCH_FAILED' }
           $builderText = $builderText.Replace('    Invoke-VirtualDiskLayoutSelfTest', '    # VHD integration is independently exercised in the following isolated step.')
           $builderText = $builderText.Replace("if ($script:PartitionMockMode -eq 'Failure') { throw 'MOCK_CIM_PROVIDER_FAILURE' }", "if ($script:PartitionMockMode -eq 'Failure') { throw 'MOCK_CIM_PROVIDER_FAILURE' }; return CimCmdlets\Get-CimInstance @PSBoundParameters")
