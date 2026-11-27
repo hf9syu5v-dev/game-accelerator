@@ -144,6 +144,7 @@ jobs:
           if ($new.Count -ne 1) { throw "R3_EXPECTED_ONE_VHD=$($new.Count)" }
           $d = $new[0]
           Initialize-Disk -Number $d.Number -PartitionStyle GPT -ErrorAction Stop | Out-Null
+          $d = Get-Disk -Number $d.Number -ErrorAction Stop
           $msrGuid = 'e3c9e316-0b5c-4db8-817d-f92df00215ae'
           $msr = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $msrGuid })
           if ($msr.Count -ne 1) { throw "R3_VHD_MSR_COUNT=$($msr.Count)" }
@@ -157,6 +158,8 @@ jobs:
           }
           $allMsft = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
           $emptyMsft = @($allMsft | Where-Object { [uint32]$_.DiskNumber -eq [uint32]$d.Number })
+          $d = Get-Disk -Number $d.Number -ErrorAction Stop
+          Write-Host ("R3_VHD_EMPTY_GPT_STYLE={0}; STORAGE_PARTITIONS={1}; MSFT_PARTITIONS={2}" -f $d.PartitionStyle,$emptyParts.Count,$emptyMsft.Count)
           if ($d.PartitionStyle -ne 'GPT' -or $emptyParts.Count -ne 0 -or $emptyMsft.Count -ne 0) { throw 'R3_VHD_EMPTY_GPT_PRECONDITION_FAILED' }
           Write-Host 'R3_EMPTY_GPT_ZERO_PARTITIONS=PASS'
           $createEsp = Join-Path $env:RUNNER_TEMP 'r3-vhd-esp.txt'
