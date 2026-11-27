@@ -77,11 +77,11 @@ function Test-TargetDiskIdentity($Disk,$CimDisk) {
 function Test-EmptyGpt($Disk,[object[]]$Partitions) {
     return ($Disk.PartitionStyle -eq 'GPT' -and @($Partitions).Count -eq 0)
 }
-function Get-EspVolumeLetter([string[]]$DiskPartOutput) {
+function Get-EspVolumeInfo([string[]]$DiskPartOutput) {
     $found = @()
     foreach ($line in @($DiskPartOutput)) {
-        if ([string]$line -match '(?i)^\s*(?:卷|Volume)\s+\d+\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') {
-            $found += $Matches[1].ToUpperInvariant()
+        if ([string]$line -match '(?i)^\s*(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') {
+            $found += [pscustomobject]@{Number=[int]$Matches[1];Letter=$Matches[2].ToUpperInvariant()}
         }
     }
     if ($found.Count -ne 1) { return $null }
@@ -193,9 +193,11 @@ function Invoke-BuilderSelfTest {
     if (Test-TargetDiskIdentity $goodDisk $badSize) { throw 'SELFTEST_SIZE_DELTA_ACCEPTED' }
     if (-not (Test-EmptyGpt $goodDisk @())) { throw 'SELFTEST_EMPTY_GPT_REJECTED' }
     if (Test-EmptyGpt $goodDisk @([pscustomobject]@{DiskNumber=1})) { throw 'SELFTEST_NONEMPTY_GPT_ACCEPTED' }
-    if ((Get-EspVolumeLetter @('  卷     3     G   OC-SEQUOIA   FAT32   磁盘分区          15 GB  正常         已隐藏')) -ne 'G') { throw 'SELFTEST_CHINESE_VOLUME_PARSE_FAILED' }
-    if ((Get-EspVolumeLetter @('  Volume  3   H   OC-SEQUOIA   FAT32   Partition  15 GB  Healthy Hidden')) -ne 'H') { throw 'SELFTEST_ENGLISH_VOLUME_PARSE_FAILED' }
-    if (Get-EspVolumeLetter @('  Volume  3   H   OTHER       FAT32   Partition  15 GB  Healthy')) { throw 'SELFTEST_WRONG_LABEL_ACCEPTED' }
+    $cnInfo = Get-EspVolumeInfo @('  卷     3     G   OC-SEQUOIA   FAT32   磁盘分区          15 GB  正常         已隐藏')
+    if (!$cnInfo -or $cnInfo.Number -ne 3 -or $cnInfo.Letter -ne 'G') { throw 'SELFTEST_CHINESE_VOLUME_PARSE_FAILED' }
+    $enInfo = Get-EspVolumeInfo @('  Volume  4   H   OC-SEQUOIA   FAT32   Partition  15 GB  Healthy Hidden')
+    if (!$enInfo -or $enInfo.Number -ne 4 -or $enInfo.Letter -ne 'H') { throw 'SELFTEST_ENGLISH_VOLUME_PARSE_FAILED' }
+    if (Get-EspVolumeInfo @('  Volume  3   H   OTHER       FAT32   Partition  15 GB  Healthy')) { throw 'SELFTEST_WRONG_LABEL_ACCEPTED' }
     $mbr=$goodDisk.PSObject.Copy();$mbr.PartitionStyle='MBR'
     if (Test-EmptyGpt $mbr @()) { throw 'SELFTEST_MBR_ACCEPTED' }
     Write-Host 'BUILDER_SELFTEST=PASS' -ForegroundColor Green
@@ -359,8 +361,10 @@ m.verify_image(sys.argv[2],sys.argv[3])
         $dp = Join-Path $work 'inspect-existing-esp.txt'
         @("select disk $($targetDisk.Number)",'select partition 1','detail partition','exit') | Set-Content -LiteralPath $dp -Encoding ASCII
         $detail = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
-        $espLetter = Get-EspVolumeLetter $detail
-        if (-not $espLetter) { Stop-Build 'EXISTING_ESP_VOLUME_NOT_FOUND_IN_DISKPART_DETAIL.' }
+        $espInfo = Get-EspVolumeInfo $detail
+        if (-not $espInfo) { Stop-Build 'EXISTING_ESP_VOLUME_NOT_FOUND_IN_DISKPART_DETAIL.' }
+        $espLetter = $espInfo.Letter
+        $espVolumeNumber = $espInfo.Number
         $usbRoot = $espLetter + ':\'
         if (-not (Test-Path -LiteralPath $usbRoot -PathType Container)) { Stop-Build ('EXISTING_ESP_DRIVE_LETTER_NOT_ACCESSIBLE=' + $espLetter) }
         Write-Host ('EXISTING_ESP_REUSED=' + $espLetter + ':; DiskPart confirms OC-SEQUOIA FAT32.') -ForegroundColor Green
@@ -376,7 +380,9 @@ m.verify_image(sys.argv[2],sys.argv[3])
         $dpOut = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
         $dpOut | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -ne 0) { Stop-Build ('DISKPART_CREATE_ESP_FAILED=' + $LASTEXITCODE) }
-        if ((Get-EspVolumeLetter $dpOut) -ne $espLetter) { Stop-Build 'DISKPART_CREATED_ESP_VOLUME_IDENTITY_MISMATCH' }
+        $espInfo = Get-EspVolumeInfo $dpOut
+        if (!$espInfo -or $espInfo.Letter -ne $espLetter) { Stop-Build 'DISKPART_CREATED_ESP_VOLUME_IDENTITY_MISMATCH' }
+        $espVolumeNumber = $espInfo.Number
         if (Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue) { Update-HostStorageCache -ErrorAction SilentlyContinue }
         Start-Sleep -Seconds 3
         $finalParts = @(Get-Partition -DiskNumber $targetDisk.Number -ErrorAction Stop)
@@ -438,7 +444,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
 
     # Remove the temporary drive letter using DiskPart; Windows Storage cmdlets may hide ESP paths.
     $removeDp = Join-Path $work 'remove-esp-letter.txt'
-    @("select volume $espLetter",'remove letter=' + $espLetter,'exit') | Set-Content -LiteralPath $removeDp -Encoding ASCII
+    @("select volume $espVolumeNumber",'remove letter=' + $espLetter,'exit') | Set-Content -LiteralPath $removeDp -Encoding ASCII
     $removeOut = @(& diskpart.exe /s $removeDp 2>&1 | ForEach-Object { [string]$_ })
     $removeOut | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0 -or (($removeOut -join [Environment]::NewLine) -notmatch '(?i)(成功地删除|successfully removed)')) {
