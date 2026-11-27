@@ -48,6 +48,10 @@ jobs:
           if ($s -match '(?m)^\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\b') { throw 'R3_UNEXPECTED_DESTRUCTIVE_CMDLET' }
           Write-Host 'R3_STATIC_SAFETY_CHECKS=PASS'
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
       - name: Verify published EFI02 release asset and all 60 manifest entries
         shell: powershell
         run: |
@@ -72,7 +76,34 @@ jobs:
             if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "EFI02_FILE_MISSING=$rel" }
             if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches[1].ToLowerInvariant()) { throw "EFI02_FILE_HASH_MISMATCH=$rel" }
           }
-          Write-Host 'EFI02_RELEASE_ASSET_AND_60_FILE_MANIFEST=PASS'
+          $ocZip = Join-Path $dir 'OpenCore-1.0.8-RELEASE.zip'
+          Invoke-WebRequest -Uri 'https://github.com/acidanthera/OpenCorePkg/releases/download/1.0.8/OpenCore-1.0.8-RELEASE.zip' -OutFile $ocZip -UseBasicParsing
+          if ((Get-FileHash $ocZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne '2011e8b7216ecb2645d97ea710df965947edd406846e92050b9bc4190be6d27b') { throw 'OPENCORE_1_0_8_RELEASE_HASH_MISMATCH' }
+          $helper = Join-Path $dir 'patch-check.py'
+          @'
+          import plistlib,sys
+          p,m=sys.argv[1],sys.argv[2]
+          with open(p,'rb') as f: c=plistlib.load(f)
+          with open(m,'rb') as f: u=plistlib.load(f)
+          c['Kernel']['Quirks']['XhciPortLimit']=False
+          c['Misc']['Boot']['Timeout']=0
+          c['Misc']['Security']['ScanPolicy']=0x200703
+          g=c['PlatformInfo']['Generic']
+          assert g['SystemSerialNumber']=='REPLACE_LOCALLY' and g['MLB']=='REPLACE_LOCALLY'
+          assert g['SystemUUID']=='00000000-0000-0000-0000-000000000000' and bytes(g['ROM'])==bytes(6)
+          k={x['BundlePath']:x for x in c['Kernel']['Add']}
+          assert k['UTBMap.kext']['Enabled'] is True
+          ports=u['IOKitPersonalities']['XHC']['IOProviderMergeProperties']['ports']
+          assert len(ports)==11
+          with open(p,'wb') as f: plistlib.dump(c,f,fmt=plistlib.FMT_XML,sort_keys=False)
+          with open(p,'rb') as f: d=plistlib.load(f)
+          assert d['Kernel']['Quirks']['XhciPortLimit'] is False
+          assert d['Misc']['Boot']['Timeout']==0 and d['Misc']['Security']['ScanPolicy']==0x200703
+          print('EFI02_CONFIG_PATCH_AND_11_PORT_UTBMAP=PASS')
+          '@ | Set-Content -LiteralPath $helper -Encoding ASCII
+          & python $helper (Join-Path $root 'OC\config.plist') (Join-Path $root 'OC\Kexts\UTBMap.kext\Contents\Info.plist')
+          if ($LASTEXITCODE -ne 0) { throw 'EFI02_CONFIG_PATCH_TEST_FAILED' }
+          Write-Host 'EFI02_RELEASE_ASSET_MANIFEST_OPENCORE_AND_CONFIG_CHECKS=PASS'
 
       - name: Exercise GPT EFI partition layout on disposable VHD
         shell: powershell
@@ -84,7 +115,7 @@ jobs:
           if (-not $letter) { throw 'NO_TEST_DRIVE_LETTER' }
           $dp = Join-Path $env:RUNNER_TEMP 'r3-vhd-layout.txt'
           @"
-          create vdisk file="$vhd" maximum=256 type=expandable
+          create vdisk file="$vhd" maximum=32768 type=expandable
           select vdisk file="$vhd"
           attach vdisk
           convert gpt
