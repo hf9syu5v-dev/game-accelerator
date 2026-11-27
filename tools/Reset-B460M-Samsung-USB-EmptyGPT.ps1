@@ -37,6 +37,6 @@ try {
  Update-HostStorageCache -ErrorAction SilentlyContinue; Start-Sleep 2
  $after=Get-Disk -Number $n -ErrorAction Stop
  $ap=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition -ErrorAction Stop|Where-Object{[int]$_.DiskNumber -eq $n})
- if($after.PartitionStyle -ne 'GPT' -or $ap.Count -ne 0){Stop-Safely "Verification failed: $($after.PartitionStyle), partitions=$($ap.Count). Do not run builder."}
- Write-Host 'RESET_VERIFIED=PASS'; Write-Host 'TARGET_STATE=GPT with zero partitions'
+ if($after.PartitionStyle -ne 'GPT' -or $ap.Count -ne 1 -or ([string]$ap[0].GptType).Trim('{}').ToLowerInvariant() -ne 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -or -not $ap[0].IsHidden){Stop-Safely "Verification failed: $($after.PartitionStyle), partitions=$($ap.Count). Do not run builder."}
+ Write-Host 'RESET_VERIFIED=PASS'; Write-Host 'TARGET_STATE=GPT with only the hidden 16 MiB MSR; no user/data partitions'
 } catch {Write-Error $_.Exception.Message;exit 1}
