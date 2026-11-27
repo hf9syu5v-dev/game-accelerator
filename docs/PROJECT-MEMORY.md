@@ -323,3 +323,11 @@
 - GitHub Actions workflow .github/workflows/test-b460m-usb-empty-gpt-reset.yml 最新Run 46071794970，提交 6e8cd5691b239222b44a5edcd15cf196ef147389，结论success。Windows Server 2022 / Windows PowerShell 5.1日志确认脚本Parser及安全静态检查通过，并在runner新建的一次性VHD上完成clean、Initialize-Disk GPT、识别/删除Windows创建的隐藏MSR，最终验证GPT且分区数为0。测试只操作runner临时VHD，不是用户实体USB。
 - 本地PS1当前SHA-256：d18e6072245e1b5ff1a60ce7cf2e5b0775a7558e102e9d4c13e2410a2881d994，Git blob SHA与仓库文件一致（2a47dbedffc5358e3cd9ed73d980da3dc96302c9）。本地环境没有Windows PowerShell解释器；Windows PowerShell 5.1 Parser与VHD端到端测试由上述GitHub Actions完成。尚未对辅助电脑实体USB执行清盘，不能声称实体盘已变更。
 - 重要后续：当前既有USB builder历史版本的空盘检查逻辑曾以“零分区”作为前置条件；本次Reset脚本最终状态满足该条件，但交付前仍须确认builder当前下载版本、SHA及其目标盘识别条件与本次Reset脚本一致。用户运行Reset脚本前，必须先下载新PS1，再独立执行；不要要求复制代码。Reset完成后回传完整输出，再继续构建器流程。
+
+
+## 30. 2026-11-28 USB清盘脚本在Win32_DiskDrive交叉核验处安全停止
+- 用户实际执行Reset-B460M-Samsung-USB-EmptyGPT.ps1，输出脚本SHA-256与已交付版本一致：d18e6072245e1b5ff1a60ce7cf2e5b0775a7558e102e9d4c13e2410a2881d994。执行在Win32_DiskDrive cross-check failed处停止，明确No changes made；停止点早于用户确认提示和DiskPart clean，故本次没有清盘或分区变更。
+- 当前已确认失败发生在Get-Disk已筛选到目标设备后，Win32_DiskDrive的Model/SerialNumber/Size严格交叉匹配未得到唯一结果。具体字段尚未确定；不得猜测，也不得放宽身份校验后直接清盘。
+- 新增只读诊断脚本 tools/Diagnose-B460M-USB-CIM-Match.ps1，本地路径 /mnt/data/Diagnose-B460M-USB-CIM-Match.ps1，SHA-256 e372670a96b773879aa536934152df7d540dc07fff13b936c263c93e13d7c3e3。输出Get-Disk和Win32_DiskDrive候选设备的原始/Trim后型号、序列号、字符串长度、容量、PNPDeviceID、接口类型，以及逐字段布尔匹配结果；无清盘、分区、初始化或写入磁盘命令。
+- 已提交只读诊断脚本和Windows Server 2022 workflow：Run 46072232673，提交57d1d2ebbdddf144ab2baa56d5919dacce374cc2，结论success。日志步骤确认Windows PowerShell 5.1 Parser通过，且静态只读检查通过。此CI只验证脚本语法和无写盘命令，不验证用户电脑设备属性。
+- 当前下一步：用户下载该诊断PS1至辅助电脑Downloads目录，以管理员Windows PowerShell 5.1运行并回传完整输出。根据CIM字段匹配结果修订清盘脚本；在原因确定前，不要再次运行清盘脚本或USB构建器。
