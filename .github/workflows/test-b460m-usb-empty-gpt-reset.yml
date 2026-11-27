@@ -1,0 +1,69 @@
+name: Validate Samsung USB empty-GPT reset (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Reset-B460M-Samsung-USB-EmptyGPT.ps1"
+      - ".github/workflows/test-b460m-usb-empty-gpt-reset.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse script and assert safety guards
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='tools/Reset-B460M-Samsung-USB-EmptyGPT.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){$errors|Format-List|Out-String|Write-Host;throw 'RESET_SCRIPT_PARSE_FAILED'}
+          $s=Get-Content $p -Raw
+          foreach($x in @('BusType -eq ''USB''','000000123ADC','IsBoot','IsSystem','clean','convert gpt','PartitionStyle -ne ''GPT''','ap.Count -ne 0')){if($s -notlike ('*'+$x+'*')){throw "MISSING_GUARD $x"}}
+          if($s -match 'select disk 1'){throw 'HARDCODED_DISK_NUMBER'}
+          Write-Host 'RESET_SCRIPT_POWERSHELL_51_PARSE=PASS'
+          Write-Host 'RESET_SCRIPT_STATIC_SAFETY_GUARDS=PASS'
+      - name: Test DiskPart clean and convert GPT on disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $v=Join-Path $env:RUNNER_TEMP 'empty-gpt-test.vhdx'
+          $before=@((Get-Disk|Select-Object -ExpandProperty Number))
+          $c=Join-Path $env:RUNNER_TEMP 'create.txt'
+          @"
+          create vdisk file="$v" maximum=256 type=expandable
+          select vdisk file="$v"
+          attach vdisk
+          exit
+          "@|Set-Content $c -Encoding ASCII
+          & diskpart.exe /s $c
+          if($LASTEXITCODE -ne 0){throw 'VHD_ATTACH_FAILED'}
+          $new=@(Get-Disk|Where-Object{$_.Number -notin $before})
+          if($new.Count -ne 1){throw "EXPECTED_ONE_VHD_GOT_$($new.Count)"}
+          $n=[int]$new[0].Number
+          $r=Join-Path $env:RUNNER_TEMP 'reset.txt'
+          @"
+          select disk $n
+          clean
+          convert gpt
+          exit
+          "@|Set-Content $r -Encoding ASCII
+          & diskpart.exe /s $r
+          if($LASTEXITCODE -ne 0){throw 'VHD_CLEAN_CONVERT_FAILED'}
+          Update-HostStorageCache
+          Start-Sleep 2
+          $d=Get-Disk -Number $n
+          $p=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition|Where-Object{[int]$_.DiskNumber -eq $n})
+          if($d.PartitionStyle -ne 'GPT' -or $p.Count -ne 0){throw "EMPTY_GPT_ASSERTION_FAILED style=$($d.PartitionStyle) count=$($p.Count)"}
+          Write-Host "VHD_EMPTY_GPT_RESET=PASS disk=$n partitions=0"
+          $x=Join-Path $env:RUNNER_TEMP 'detach.txt'
+          @"
+          select vdisk file="$v"
+          detach vdisk
+          exit
+          "@|Set-Content $x -Encoding ASCII
+          & diskpart.exe /s $x
+          if(Test-Path $v){Remove-Item $v -Force}
