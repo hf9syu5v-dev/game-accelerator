@@ -140,3 +140,11 @@ jobs:
           & diskpart.exe /s $detach
           if ($LASTEXITCODE -ne 0) { throw 'R3_VHD_DETACH_FAILED' }
           Remove-Item -LiteralPath $vhd -Force
+
+      - name: Publish exact tested builder source as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Samsung-USB-Builder-r3-source
+          path: tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1
+          if-no-files-found: error
