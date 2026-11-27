@@ -1,0 +1,31 @@
+name: Validate Samsung USB empty-GPT reset revision 2 (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1"
+      - ".github/workflows/test-b460m-usb-empty-gpt-reset-r2.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse script with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='tools/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){$errors|Format-List|Out-String|Write-Host;throw 'RESET_R2_PARSE_FAILED'}
+          Write-Host 'RESET_R2_POWERSHELL_51_PARSE=PASS'
+      - name: Run identity predicate self-tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1 -SelfTest
+          if($LASTEXITCODE -ne 0){throw 'RESET_R2_SELFTEST_FAILED'}
+          Write-Host 'RESET_R2_IDENTITY_SELFTEST=PASS'
