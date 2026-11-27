@@ -261,3 +261,17 @@
 - EFI ZIP完整性检查PASS，60个条目，EFI/BOOT/BOOTx64.efi、EFI/OC/OpenCore.efi、EFI/OC/config.plist三个关键路径存在。
 - GitHub Actions Run `46067207584` 已通过Windows Server 2022 / Windows PowerShell 5.1脚本解析、模拟空盘/非空盘/CIM异常测试及独立VHD GPT/ESP+MSR/FAT32布局验证。该验证不等于辅助电脑真实Samsung USB已写入。
 - 当前已准备向用户交付两个本地文件；用户必须将二者放在辅助电脑Downloads同一目录，管理员Windows PowerShell 5.1中单独执行脚本。执行时首先核对实际设备型号、容量、USB BusType和序列号，未出现精确目标身份及用户确认之前不会执行DiskPart clean。
+
+
+## 24. 2026-11-28 用户实际运行USB脚本后的再次故障与根因
+- 用户在辅助电脑管理员Windows PowerShell 5.1运行此前交付的Build-B460M-Sequoia-USB-Samsung-256GB.ps1，脚本在开头目标盘分区预检查处停止：`找不到任何“DiskNumber”属性等于“1”的 MSFT_Partition 对象`。
+- 失败发生在目标盘识别之后、任何DiskPart命令之前；没有运行clean、convert、create partition、format或assign。根据完整输出，脚本没有对USB执行清盘/格式化/分区写入；辅助电脑Disk 0系统盘未被选中。
+- 复核此前所谓CIM修复实现，发现它仍通过`Get-CimInstance -Filter 'DiskNumber = N'`调用MSFT_Partition。该Storage provider在空盘查询时仍可能抛出对象不存在异常，因此前一轮修复并未解决用户实际遇到的环境差异。
+- 本轮本地最终修正：Get-TargetPartitions不再使用WQL Filter；改为不带Filter枚举MSFT_Partition类，再在PowerShell端按DiskNumber筛选。零匹配结果作为正常空盘；CIM类枚举/提供程序异常仍包装为PARTITION_QUERY_FAILED并停止，保持fail-closed。
+- 本地新脚本：`/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1`，大小23,854 bytes，SHA-256 `7d7fdc1bfdaccac035dcd3795a09779964121ec953290d36ec9818637b442b52`。静态检查确认不再含`-Filter $filter`或旧`Get-Partition -DiskNumber`调用，且仍保留Samsung型号前缀、USB BusType、容量范围、序列号交叉验证、IsBoot/IsSystem保护、E:/F:排除和破坏性确认门槛。
+- 本地EFI包仍为`/mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip`，大小4,637,288 bytes，SHA-256 `e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680`；ZIP完整性PASS，60个条目，关键EFI启动路径存在。EFI包含用户批准的临时测试SMBIOS，禁止公开上传或写入本记忆具体值。
+- GitHub Actions新回归测试：Run `46067974097`，commit `7b7beba9449592e85abe0cb1d0e9f5e8047e276b`，Windows Server 2022 / Windows PowerShell 5.1，结论success。日志：POWERSHELL_51_PARSE=PASS；EMPTY_DISK_RETURNS_ZERO_PARTITIONS=PASS；NONEMPTY_DISK_RETURNS_ONLY_MATCHING_PARTITIONS=PASS；CIM_PROVIDER_FAILURE_STOPS_BUILD=PASS；GET_TARGET_PARTITIONS_REGRESSION_TEST=PASS。
+- 新增实际VHD集成测试：`tests/powershell/Get-TargetPartitions.Vhd.Tests.ps1`；Workflow `.github/workflows/test-empty-disk-partition-query.yml`在Windows runner中创建一次性256MB VHDX，DiskPart实际执行GPT、EFI、FAT32和OC-SEQUOIA卷标，然后用与本地脚本相同的无Filter CIM枚举逻辑核验ESP+MSR两分区。Run `46068070613`，commit `a38a4b7f278fab38f97fadd38c0026e9f0be0737`，结论success；日志确认VHD_CIM_ENUMERATION_RETURNS_ESP_AND_MSR=PASS，VHD_PARTITION_COUNT=2，测试磁盘号2、测试盘符Z。该VHD为GitHub runner临时磁盘，不是用户实体USB。
+- 两次早期回归Run `46067815355`、`46067873739`失败原因是测试mock将未传入的[string] Filter参数自动转换为空字符串，却错误地按$null判断；不是生产函数测试结果。修正测试为[string]::IsNullOrEmpty后Run 46067974097通过。
+- 验证边界：本轮Windows PowerShell 5.1 parser和空盘/非空盘/provider错误测试针对与本地脚本相同的Get-TargetPartitions实现；VHD集成测试在真实Windows runner上验证同一查询逻辑与DiskPart布局。上一版完整builder fixture解析/VHD workflow Run 46067207584仍为success。不得声称本轮新SHA的完整本地PS1文件已逐字节在Windows runner解析，也不得声称辅助电脑实体USB已写入或实机OpenCore启动成功。
+- 当前决定：不要再运行旧版本脚本；新版本可在确认所有安全检查、文件校验和设备身份后再交付。交付前应再次核验本地PS1和EFI ZIP存在及SHA，并保留Windows PowerShell 5.1测试范围的准确说明。
