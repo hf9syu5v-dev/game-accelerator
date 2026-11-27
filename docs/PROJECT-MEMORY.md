@@ -209,3 +209,15 @@
 - 本地静态检查通过：三处调用均已替换；不再含旧Get-Partition -DiskNumber查询；目标USB型号/序列号/USB总线/容量校验、Win32_DiskDrive交叉校验、IsBoot/IsSystem保护、E:/F:排除、精确破坏性确认、DiskPart clean仍位于用户确认之后，均保留。
 - 验证限制：当前工作容器没有Windows PowerShell 5.1、PowerShell 7、Windows VM或可用的GitHub Actions workflow-dispatch工具；因此修订版尚未完成真实PowerShell 5.1解析/运行、Windows VM测试或GitHub Actions测试。不得声称修订版已经通过这些测试，也不得让用户将其视为已完成验证的正式构建脚本。
 - 下一步：先取得Windows PowerShell 5.1解析与模拟空/非空MSFT_Partition查询的验证，再执行GitHub Actions验证；两项通过后才发布修订脚本下载链接和独立执行命令。验证完成前不得对目标USB运行修订脚本。
+
+
+
+## 19. 2026-11-28 空盘检测修复的Windows PowerShell 5.1 / GitHub Actions回归验证
+- 为避免将临时测试SMBIOS、真实设备序列号等内容提交到公开仓库，没有上传完整本地USB制作脚本；在仓库新增了隔离回归测试文件tests/powershell/Get-TargetPartitions.Tests.ps1，其中测试的Get-TargetPartitions函数与本地修订脚本实现一致。
+- 新增workflow：.github/workflows/test-empty-disk-partition-query.yml，运行环境Windows Server 2022 / Windows PowerShell 5.1，触发事件push和workflow_dispatch。
+- Workflow run：46063517821；提交：590e7a3ec6333fcf24cf9c4a2d0f8829570dc700；最终job powershell-51-regression completed/success。
+- 日志实际证明：POWERSHELL_51_PARSE=PASS；EMPTY_DISK_RETURNS_ZERO_PARTITIONS=PASS；NONEMPTY_DISK_RETURNS_ALL_PARTITIONS=PASS；CIM_PROVIDER_FAILURE_STOPS_BUILD=PASS；GET_TARGET_PARTITIONS_REGRESSION_TEST=PASS。
+- 测试使用模拟Get-CimInstance，不读取、不更改任何runner物理磁盘；覆盖空分区结果、非空分区结果及CIM提供程序异常传播。
+- 本次CI只验证了回归测试脚本自身的PowerShell 5.1语法，以及Get-TargetPartitions函数的模拟行为；没有解析或运行/mnt/data中的完整USB构建脚本，也没有进行完整Windows VM端到端构建测试。不得把该CI PASS描述为完整构建脚本已通过PowerShell解析或USB写盘测试。
+- 本地修订脚本仍为/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1，SHA-256 f137d3ad339f4daf87203c55870eaf67004be3a76db3636b28bd62f0430b86b2；尚未向用户重新发布为可执行交付。
+- 当前决定：空盘检测修复逻辑的Windows PowerShell 5.1回归测试和GitHub Actions测试通过；完整脚本的解析/端到端安全测试仍待完成。在完整验证前，用户不要执行修订脚本，不对Disk 1进行任何手动格式化或分区操作。
