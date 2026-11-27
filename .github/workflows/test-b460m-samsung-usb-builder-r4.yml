@@ -79,7 +79,7 @@ jobs:
           if (-not (Test-Path ($letter + ':\\R4-TEST.txt'))) { throw 'R4_VHD_COPY_ACCESS_FAILED' }
           Write-Host 'R4_EXISTING_ESP_DISKPART_DISCOVERY_AND_FILESYSTEM_ACCESS=PASS'
           $detach = Join-Path $env:RUNNER_TEMP 'r4-vhd-detach.txt'
-          @('select volume ' + $volumeNumber,'remove letter=' + $letter,'exit') | Set-Content -LiteralPath $detach -Encoding ASCII
+          @('select volume=' + $volumeNumber,'remove letter=' + $letter,'exit') | Set-Content -LiteralPath $detach -Encoding ASCII
           & diskpart.exe /s $detach
           $vdetach = Join-Path $env:RUNNER_TEMP 'r4-vhd-vdetach.txt'
           @('select vdisk file="' + $vhd + '"','detach vdisk','exit') | Set-Content -LiteralPath $vdetach -Encoding ASCII
