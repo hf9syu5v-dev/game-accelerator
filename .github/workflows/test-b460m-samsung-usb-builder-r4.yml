@@ -1,0 +1,92 @@
+name: Validate Samsung USB Sequoia builder r4 (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1"
+      - ".github/workflows/test-b460m-samsung-usb-builder-r4.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse builder with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p).Path,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Host; throw 'R4_POWERSHELL_51_PARSE_FAILED' }
+          Write-Host 'R4_POWERSHELL_51_PARSE=PASS'
+          Write-Host ('R4_SHA256=' + (Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant())
+      - name: Run target identity and DiskPart output parser self-tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1' -SelfTest
+          if (-not $?) { throw 'R4_SELFTEST_FAILED' }
+          Write-Host 'R4_SELFTEST=PASS'
+      - name: Static safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $s = Get-Content 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1' -Raw
+          foreach ($x in @('000000123ADC','USBSTOR\\','PHYSICALDRIVE','IsBoot','IsSystem','BUILD SEQUOIA INSTALLER ON SAMSUNG USB','Get-EspVolumeInfo','E:','F:','XhciPortLimit','0x200703')) {
+            if (-not $s.Contains($x)) { throw "R4_REQUIRED_GUARD_MISSING=$x" }
+          }
+          if ($s -match "(?m)^\\s*'clean'\\s*,?\\s*$") { throw 'R4_MUST_NOT_DISKPART_CLEAN' }
+          if ($s -match '(?m)^\\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\\b') { throw 'R4_UNEXPECTED_DESTRUCTIVE_CMDLET' }
+          Write-Host 'R4_STATIC_SAFETY_AUDIT=PASS'
+      - name: Exercise existing ESP detection and copy access on disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1' -SelfTest
+          $vhd = Join-Path $env:RUNNER_TEMP 'b460m-r4-existing-esp.vhdx'
+          $before = @((Get-Disk | Select-Object -ExpandProperty Number))
+          $letter = @('Z','Y','X','W','V','U','T','S','R','Q','P','O','N','M','L','K','J','I','H','G') | Where-Object { -not (Test-Path ($_.ToString() + ':')) } | Select-Object -First 1
+          if (-not $letter) { throw 'R4_NO_TEST_DRIVE_LETTER' }
+          $create = Join-Path $env:RUNNER_TEMP 'r4-vhd-create.txt'
+          @"
+          create vdisk file="$vhd" maximum=32768 type=expandable
+          select vdisk file="$vhd"
+          attach vdisk
+          exit
+          "@ | Set-Content -LiteralPath $create -Encoding ASCII
+          & diskpart.exe /s $create
+          if ($LASTEXITCODE -ne 0) { throw 'R4_VHD_CREATE_FAILED' }
+          $new = @(Get-Disk | Where-Object { $_.Number -notin $before })
+          if ($new.Count -ne 1) { throw "R4_EXPECTED_ONE_VHD=$($new.Count)" }
+          $d = $new[0]
+          Initialize-Disk -Number $d.Number -PartitionStyle GPT -ErrorAction Stop | Out-Null
+          $msr = @(Get-Partition -DiskNumber $d.Number | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'e3c9e316-0b5c-4db8-817d-f92df00215ae' })
+          if ($msr.Count -ne 1) { throw 'R4_VHD_MSR_NOT_FOUND' }
+          Remove-Partition -DiskNumber $d.Number -PartitionNumber $msr[0].PartitionNumber -Confirm:$false
+          $dp = Join-Path $env:RUNNER_TEMP 'r4-vhd-esp.txt'
+          @("select disk $($d.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$letter",'select partition 1','detail partition','exit') | Set-Content -LiteralPath $dp -Encoding ASCII
+          $out = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
+          if ($LASTEXITCODE -ne 0) { throw 'R4_VHD_ESP_CREATE_FAILED' }
+          $line = $out | Where-Object { $_ -match '(?i)^\\s*(?:卷|Volume)\\s+\\d+\\s+[A-Z]\\s+OC-SEQUOIA\\s+FAT32\\b' }
+          if (@($line).Count -ne 1) { $out | Write-Host; throw 'R4_VHD_DETAIL_VOLUME_NOT_FOUND' }
+          if (-not (Test-Path ($letter + ':\\') -PathType Container)) { throw 'R4_VHD_DRIVE_LETTER_NOT_ACCESSIBLE' }
+          Set-Content -LiteralPath ($letter + ':\\R4-TEST.txt') -Value 'copy-access-pass'
+          if (-not (Test-Path ($letter + ':\\R4-TEST.txt'))) { throw 'R4_VHD_COPY_ACCESS_FAILED' }
+          Write-Host 'R4_EXISTING_ESP_DISKPART_DISCOVERY_AND_FILESYSTEM_ACCESS=PASS'
+          $detach = Join-Path $env:RUNNER_TEMP 'r4-vhd-detach.txt'
+          @('select volume 1','remove letter=' + $letter,'exit') | Set-Content -LiteralPath $detach -Encoding ASCII
+          & diskpart.exe /s $detach
+          $vdetach = Join-Path $env:RUNNER_TEMP 'r4-vhd-vdetach.txt'
+          @('select vdisk file="' + $vhd + '"','detach vdisk','exit') | Set-Content -LiteralPath $vdetach -Encoding ASCII
+          & diskpart.exe /s $vdetach
+          Remove-Item -LiteralPath $vhd -Force
+      - name: Publish tested r4 source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Samsung-USB-Builder-r4-source
+          path: tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1
+          if-no-files-found: error
