@@ -113,3 +113,24 @@
 - UHD630属性为AAPL,ig-platform-id 0300913E（headless配置）；音频layout-id 1；没有看到RX570独显注入属性，需结合完整config和实机显示输出验证，不应据此宣称GPU加速。
 - 发现Kernel Quirks中的XhciPortLimit为True。此项需在最终部署前结合Sequoia兼容性及已完成UTBMap的配置审查，不要未经验证直接改动。
 - 当前结论：EFI02是完整的配置基准包，但不能原样直接写盘作为最终可用EFI；至少必须先填入有效的本机SMBIOS标识，并审查上述配置项。部署前仍需校验config.plist与OpenCore 1.0.8 ocvalidate。
+
+
+## 13. 2026-11-28本轮续接复核与待办更新
+### EFI02当前artifact和CI日志复核
+- 再次读取GitHub Actions run 45859349639：status=completed，conclusion=success；head branch为opencore-1.0.5-sequoia-rx570，head SHA为5f728f133f4583fd46c8068a798f77d68dae505b。
+- Artifact 15138240431仍存在且未过期；GitHub API digest为sha256:e28d7fc6aa3096d01266b94db15255de62aad9c7e3ff39bc7b44f07cff409bcc，与本轮实际下载的外层ZIP哈希一致。
+- 本轮重新解析外层ZIP和内层EFI ZIP，内层107个条目；OpenCore config位于EFI/OC/config.plist；EFI-SHA256SUMS.txt在外层artifact根目录，列出60个文件。内层EFI ZIP哈希仍为baab37149a72b7a373adb92c6b575523bb97d57780cefb04f7ac9e7e2ad08271。
+- 读取该run的完整job日志：明确执行OpenCore 1.0.8 RELEASE包内的ocvalidate；日志输出“Completed validating staging/EFI/OC/config.plist in 1 ms. No issues found.” 因此应更正第12节中“部署前仍需校验config.plist与OpenCore 1.0.8 ocvalidate”的未完成表述：CI的ocvalidate验证已成功；本地部署前仍应针对任何后续修改再次运行对应版本校验。
+- job各步骤均completed/success，包括参考EFI下载、官方OpenCore/kext下载、EFI组装、ocvalidate、严格文件检查、artifact上传和release发布。该结果只代表CI构建与静态配置验证，不代表目标电脑实机启动。
+- Workflow源文件：.github/workflows/build-b460m-baseline-efi02-latest.yml。其固定下载OpenCore 1.0.8 RELEASE，并调用oc-release/Utilities/ocvalidate/ocvalidate staging/EFI/OC/config.plist。
+- 当前EFI02 config再次确认：Kernel Quirks XhciPortLimit=True；ACPI/SSDT-DMAR.aml文件存在但配置项未启用；UTBMap.kext Enabled且USBToolBox.kext Enabled；USBInjectAll.kext和USBPorts.kext Disabled；UTBMap内映射数量在CI严格检查中断言为11。
+- Kext版本从本轮实际bundle Info.plist读取：Lilu 1.7.2、VirtualSMC 1.3.8、WhateverGreen 1.7.1、AppleALC 1.9.8、IntelMausi 1.0.8、NVMeFix 1.1.3、RestrictEvents 1.1.6、USBToolBox 1.2.0、UTBMap 1.1、XHCI-unsupported 0.9.2。SMCProcessor与SMCSuperIO随VirtualSMC release更新。
+- DeviceProperties当前有UHD630 headless平台ID 0300913E、板载音频layout-id 1；config没有为RX570单独添加DeviceProperties。RX570为Polaris原生支持路线，是否实际驱动加速必须在目标机进入macOS后用系统信息/IORegistry/Metal等核验，不能用“没有显卡注入”简单推断失败。
+- 当前必须优先审查XhciPortLimit=True与Sequoia、已完成11端口UTBMap的兼容性；尚未修改该值，避免在没有记录和回退点的情况下擅改EFI。
+- SMBIOS仍为占位符：iMac20,1，序列号/MLB为REPLACE_LOCALLY，UUID全零，ROM六个零字节。EFI02不能原样作为正式EFI部署。
+
+### 只读磁盘识别脚本交付
+- 已在本轮真实创建 /mnt/data/B460M-ReadOnly-Disk-Inventory.ps1，约3.3KB，UTF-8 BOM，PowerShell 5.1目标。
+- 脚本只执行Get-Disk与Get-CimInstance Win32_DiskDrive查询并打印物理磁盘信息；静态检查确认文件存在、括号平衡、查询命令存在、不包含Format-Volume/Clear-Disk/Initialize-Disk/New-Partition/Remove-Partition/Set-Disk等写入/破坏命令。
+- 已向用户提供下载链接sandbox:/mnt/data/B460M-ReadOnly-Disk-Inventory.ps1及独立执行命令；当前等待用户运行并回传输出。Windows PowerShell真实运行测试尚未完成。
+- 当前磁盘设备身份仍未确认；256GB移动盘和HP NVMe的型号、序列号、BusType、Windows磁盘编号继续列为第一优先待办。未执行任何磁盘写入操作。
