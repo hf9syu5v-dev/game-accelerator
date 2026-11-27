@@ -38,6 +38,18 @@ function Get-TargetPartitions([uint32]$DiskNumber) {
         throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber,$_.Exception.Message)
     }
 }
+function Get-StoragePartitions([uint32]$DiskNumber) {
+    try {
+        return @(Get-Partition -DiskNumber $DiskNumber -ErrorAction Stop)
+    } catch {
+        # Storage cmdlets report an empty disk as a not-found error instead of an empty array.
+        if ($_.FullyQualifiedErrorId -like 'CmdletizationQuery_NotFound_DiskNumber*' -or
+            $_.Exception.Message -match 'No MSFT_Partition objects found') {
+            return @()
+        }
+        throw
+    }
+}
 function Test-TargetDiskIdentity($Disk,$CimDisk) {
     if ($null -eq $Disk -or $null -eq $CimDisk) { return $false }
     $serial = ([string]$Disk.SerialNumber).Trim() -replace '\s',''
@@ -210,7 +222,7 @@ try {
     $targetCim = $matches[0].Cim
 
     $targetParts = @(Get-TargetPartitions ([uint32]$targetDisk.Number))
-    $storageParts = @(Get-Partition -DiskNumber $targetDisk.Number -ErrorAction Stop)
+    $storageParts = @(Get-StoragePartitions ([uint32]$targetDisk.Number))
     if (-not (Test-EmptyGpt $targetDisk $targetParts) -or $storageParts.Count -ne 0) {
         Stop-Build "SAFETY_STOP: target must be GPT with zero partitions. MSFT_Partition=$($targetParts.Count); Get-Partition=$($storageParts.Count). No changes made."
     }
@@ -304,7 +316,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
     $diskNow = Get-Disk -Number $targetDisk.Number -ErrorAction Stop
     $cimNow = @(Get-CimInstance Win32_DiskDrive -ErrorAction Stop | Where-Object { [int]$_.Index -eq [int]$targetDisk.Number })
     $partsNow = @(Get-TargetPartitions ([uint32]$targetDisk.Number))
-    $partsStorageNow = @(Get-Partition -DiskNumber $targetDisk.Number -ErrorAction Stop)
+    $partsStorageNow = @(Get-StoragePartitions ([uint32]$targetDisk.Number))
     if ($cimNow.Count -ne 1 -or -not (Test-TargetDiskIdentity $diskNow $cimNow[0]) -or
         -not (Test-EmptyGpt $diskNow $partsNow) -or $partsStorageNow.Count -ne 0) {
         Stop-Build 'SAFETY_STOP: target identity or GPT-zero-partition state changed before write. No DiskPart command was run.'
@@ -401,7 +413,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
     # Remove the temporary drive letter so the ESP is ready for UEFI boot.
     Remove-PartitionAccessPath -DiskNumber $targetDisk.Number -PartitionNumber $espPartition.PartitionNumber -AccessPath $usbRoot -ErrorAction Stop
     $checkDisk = Get-Disk -Number $targetDisk.Number -ErrorAction Stop
-    $checkParts = @(Get-Partition -DiskNumber $targetDisk.Number -ErrorAction Stop)
+    $checkParts = @(Get-StoragePartitions ([uint32]$targetDisk.Number))
     if ($checkDisk.PartitionStyle -ne 'GPT' -or $checkParts.Count -ne 1 -or
         ([string]$checkParts[0].GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or
         [string]$checkParts[0].DriveLetter) {
