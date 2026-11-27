@@ -1,0 +1,130 @@
+name: Validate Samsung USB empty-GPT builder r3 (Windows PowerShell 5.1)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1.gz.b64"
+      - ".github/workflows/test-b460m-samsung-empty-gpt-builder-r3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-51-builder-validation:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore exact r3 builder and verify SHA256
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $encoded = (Get-Content 'tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1.gz.b64' -Raw).Trim()
+          $compressed = [Convert]::FromBase64String($encoded)
+          $input = New-Object System.IO.MemoryStream(,$compressed)
+          $gzip = New-Object System.IO.Compression.GzipStream($input,[System.IO.Compression.CompressionMode]::Decompress)
+          $output = New-Object System.IO.MemoryStream
+          $gzip.CopyTo($output)
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
+          [System.IO.File]::WriteAllBytes($scriptPath,$output.ToArray())
+          $input.Dispose(); $gzip.Dispose(); $output.Dispose()
+          $actual = (Get-FileHash -LiteralPath $scriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = 'ccede6f1a50debddbfa46a819e97385c8b1c0dab3c03749247e0d0fc42bf3ff8'
+          Write-Host "R3_BUILDER_SHA256=$actual"
+          if ($actual -ne $expected) { throw 'R3_BUILDER_FIXTURE_SHA256_MISMATCH' }
+          Write-Host 'R3_BUILDER_FIXTURE_SHA256=PASS'
+
+      - name: Parse full builder with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw 'R3_POWERSHELL_51_PARSE_FAILED' }
+          Write-Host 'R3_POWERSHELL_51_PARSE=PASS'
+
+      - name: Run builder safety and empty-GPT self-tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
+          & $scriptPath -SelfTest
+          if (-not $?) { throw 'R3_BUILDER_SELFTEST_FAILED' }
+
+      - name: Static safety checks
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
+          $s = Get-Content -LiteralPath $p -Raw
+          foreach ($required in @('000000123ADC','Samsung SSD 860 EVO','USBSTOR\','PHYSICALDRIVE','IsBoot','IsSystem','CREATE EFI BOOT PARTITION ON SAMSUNG USB','Get-TargetPartitions','PartitionStyle','E:','F:','XhciPortLimit','0x200703')) {
+            if (-not $s.Contains($required)) { throw "R3_REQUIRED_GUARD_MISSING=$required" }
+          }
+          if ($s -match "(?m)^\s*'clean'\s*,?\s*$") { throw 'R3_MUST_NOT_DISKPART_CLEAN' }
+          if ($s -match '(?m)^\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\b') { throw 'R3_UNEXPECTED_DESTRUCTIVE_CMDLET' }
+          Write-Host 'R3_STATIC_SAFETY_CHECKS=PASS'
+
+      - name: Verify published EFI02 release asset and all 60 manifest entries
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = 'https://github.com/hf9syu5v-dev/game-accelerator/releases/download/b460m-baseline-efi02-sequoia-oc108/'
+          $dir = Join-Path $env:RUNNER_TEMP 'efi02-audit'
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          $zip = Join-Path $dir 'B460M-Baseline-EFI-02.zip'
+          $manifest = Join-Path $dir 'EFI-SHA256SUMS.txt'
+          Invoke-WebRequest -Uri ($base + 'B460M-Baseline-EFI-02.zip') -OutFile $zip -UseBasicParsing
+          Invoke-WebRequest -Uri ($base + 'EFI-SHA256SUMS.txt') -OutFile $manifest -UseBasicParsing
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne 'c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c') { throw 'EFI02_RELEASE_ZIP_HASH_MISMATCH' }
+          if ((Get-FileHash $manifest -Algorithm SHA256).Hash.ToLowerInvariant() -ne '635023086dbbad2bf8b72ad7bb640b234c90f903edbdf6da0f66a3d55d27ac50') { throw 'EFI02_RELEASE_MANIFEST_HASH_MISMATCH' }
+          Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $dir 'unpacked') -Force
+          $root = Join-Path $dir 'unpacked\EFI'
+          $lines = @(Get-Content -LiteralPath $manifest | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+          if ($lines.Count -ne 60) { throw "EFI02_MANIFEST_COUNT=$($lines.Count)" }
+          foreach ($line in $lines) {
+            if ($line -notmatch '^([0-9a-fA-F]{64})\s+(.+)$') { throw "EFI02_MANIFEST_FORMAT=$line" }
+            $rel = $Matches[2].Replace('/','\')
+            $file = Join-Path $root $rel
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw "EFI02_FILE_MISSING=$rel" }
+            if ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant() -ne $Matches[1].ToLowerInvariant()) { throw "EFI02_FILE_HASH_MISMATCH=$rel" }
+          }
+          Write-Host 'EFI02_RELEASE_ASSET_AND_60_FILE_MANIFEST=PASS'
+
+      - name: Exercise GPT EFI partition layout on disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vhd = Join-Path $env:RUNNER_TEMP 'b460m-r3-layout.vhdx'
+          $before = @((Get-Disk | Select-Object -ExpandProperty Number))
+          $letter = @('Z','Y','X','W','V','U','T','S','R','Q','P','O','N','M','L','K','J','I','H','G') | Where-Object { -not (Test-Path ($_.ToString() + ':')) } | Select-Object -First 1
+          if (-not $letter) { throw 'NO_TEST_DRIVE_LETTER' }
+          $dp = Join-Path $env:RUNNER_TEMP 'r3-vhd-layout.txt'
+          @"
+          create vdisk file="$vhd" maximum=256 type=expandable
+          select vdisk file="$vhd"
+          attach vdisk
+          convert gpt
+          create partition efi size=16000
+          format fs=fat32 quick label=OC-SEQUOIA
+          assign letter=$letter
+          exit
+          "@ | Set-Content -LiteralPath $dp -Encoding ASCII
+          & diskpart.exe /s $dp
+          if ($LASTEXITCODE -ne 0) { throw 'R3_VHD_DISKPART_FAILED' }
+          $new = @(Get-Disk | Where-Object { $_.Number -notin $before })
+          if ($new.Count -ne 1) { throw "R3_EXPECTED_ONE_VHD=$($new.Count)" }
+          $d = $new[0]
+          $parts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+          $esp = @($parts | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' })
+          $vol = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $letter) -ErrorAction Stop
+          if ($d.PartitionStyle -ne 'GPT' -or $parts.Count -ne 2 -or $esp.Count -ne 1 -or $esp[0].Size -lt 15GB -or $esp[0].Size -gt 17GB -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') { throw 'R3_VHD_ESP_LAYOUT_INVALID' }
+          Write-Host 'R3_DISPOSABLE_VHD_GPT_ESP_FAT32_LAYOUT=PASS'
+          $detach = Join-Path $env:RUNNER_TEMP 'r3-vhd-detach.txt'
+          $detachLine = 'select vdisk file="' + $vhd + '"'
+          @($detachLine,'detach vdisk','exit') | Set-Content -LiteralPath $detach -Encoding ASCII
+          & diskpart.exe /s $detach
+          if ($LASTEXITCODE -ne 0) { throw 'R3_VHD_DETACH_FAILED' }
+          Remove-Item -LiteralPath $vhd -Force
