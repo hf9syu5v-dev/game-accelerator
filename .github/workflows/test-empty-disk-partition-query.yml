@@ -1,0 +1,36 @@
+name: Test empty-disk partition query (Windows PowerShell 5.1)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/powershell/Get-TargetPartitions.Tests.ps1"
+      - ".github/workflows/test-empty-disk-partition-query.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-51-regression:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse regression test with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Resolve-Path 'tests/powershell/Get-TargetPartitions.Tests.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Host
+            throw 'PowerShell 5.1 parser rejected the regression test.'
+          }
+          Write-Host 'POWERSHELL_51_PARSE=PASS'
+      - name: Test empty disk, non-empty disk, and provider failure
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'tests/powershell/Get-TargetPartitions.Tests.ps1'
