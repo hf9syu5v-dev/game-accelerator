@@ -134,3 +134,12 @@
 - 脚本只执行Get-Disk与Get-CimInstance Win32_DiskDrive查询并打印物理磁盘信息；静态检查确认文件存在、括号平衡、查询命令存在、不包含Format-Volume/Clear-Disk/Initialize-Disk/New-Partition/Remove-Partition/Set-Disk等写入/破坏命令。
 - 已向用户提供下载链接sandbox:/mnt/data/B460M-ReadOnly-Disk-Inventory.ps1及独立执行命令；当前等待用户运行并回传输出。Windows PowerShell真实运行测试尚未完成。
 - 当前磁盘设备身份仍未确认；256GB移动盘和HP NVMe的型号、序列号、BusType、Windows磁盘编号继续列为第一优先待办。未执行任何磁盘写入操作。
+
+
+## 13. 2026-11-28 Windows磁盘只读识别结果
+用户运行B460M-ReadOnly-Disk-Inventory.ps1并回传Get-Disk与Win32_DiskDrive输出：
+- Disk 0：Samsung SSD 860 EVO 250GB，约232.89GB，SATA/ATA，MBR，IsBoot=True、IsSystem=True，当前Windows系统盘。必须保护，不得写入。
+- Disk 1：Samsung SSD 860 EVO USB Device，约232.89GB，USB，GPT，非启动/系统盘。它是否为计划中的256GB移动安装介质尚未确认；其报告型号为Samsung 860 EVO USB，不应擅自将其认定为其他型号。
+- HP 250GB NVMe未出现在Get-Disk或Win32_DiskDrive结果中，尚未被Windows识别。
+- 本次识别只读，没有进行磁盘更改。禁止根据旧计划假定HP NVMe已出现，也禁止对Disk 1写入，直到用户确认其物理身份和用途。
+- 下一步：查明Disk 1是否就是用户所说的移动安装盘；同时让HP NVMe在Windows中可见并重新运行只读识别。Disk 0始终作为当前系统盘保护。磁盘编号可能变化，后续每次操作前都要重新核验。
