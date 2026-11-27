@@ -275,3 +275,13 @@
 - 两次早期回归Run `46067815355`、`46067873739`失败原因是测试mock将未传入的[string] Filter参数自动转换为空字符串，却错误地按$null判断；不是生产函数测试结果。修正测试为[string]::IsNullOrEmpty后Run 46067974097通过。
 - 验证边界：本轮Windows PowerShell 5.1 parser和空盘/非空盘/provider错误测试针对与本地脚本相同的Get-TargetPartitions实现；VHD集成测试在真实Windows runner上验证同一查询逻辑与DiskPart布局。上一版完整builder fixture解析/VHD workflow Run 46067207584仍为success。不得声称本轮新SHA的完整本地PS1文件已逐字节在Windows runner解析，也不得声称辅助电脑实体USB已写入或实机OpenCore启动成功。
 - 当前决定：不要再运行旧版本脚本；新版本可在确认所有安全检查、文件校验和设备身份后再交付。交付前应再次核验本地PS1和EFI ZIP存在及SHA，并保留Windows PowerShell 5.1测试范围的准确说明。
+
+
+## 25. 2026-11-28 最终版空盘查询逻辑的完整构建Fixture回归通过
+- 为进一步验证新修复逻辑，更新 .github/workflows/test-b460m-sequoia-usb-builder.yml：Windows Server 2022 runner恢复仓库中保存的完整builder fixture后，按函数边界将旧Get-TargetPartitions替换为本轮最终无WQL Filter版本，然后对完整恢复脚本执行Windows PowerShell 5.1 Parser、运行builder的隔离SelfTest，并在新建临时VHD上运行DiskPart GPT/EFI/FAT32布局验证。
+- 最新完整builder CI Run 46068462799，commit dc4ff599915483d70de8ecac633c55511e217c78，结论success。步骤均success：Restore exact builder fixture、Parse complete builder with Windows PowerShell 5.1、Run isolated builder self-tests、Exercise DiskPart EFI layout on a newly attached disposable VHD。
+- 同一轮独立VHD查询测试Run 46068070613也已success，实际Windows runner VHD验证无Filter CIM枚举可返回ESP+MSR两条记录；独立空/非空/provider异常测试Run 46067974097 success。
+- 验证边界说明：完整builder fixture在CI中恢复后，测试workflow明确用最终Get-TargetPartitions函数替换旧实现，再解析/自测；不是对/mnt/data本地PS1逐字节原样解析。最终函数代码与本地文件一致。CI VHD是runner新建临时VHD，不是辅助电脑Samsung USB实盘写入。
+- 最终本地交付文件重新核验：PS1 /mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1，23,854 bytes，SHA-256 7d7fdc1bfdaccac035dcd3795a09779964121ec953290d36ec9818637b442b52；EFI ZIP /mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip，4,637,288 bytes，SHA-256 e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680。EFI ZIP完整性PASS，60条目，关键启动路径存在。
+- 本地静态安全检查PASS：不再使用MSFT_Partition WQL Filter；不再使用Get-Partition -DiskNumber；动态识别Samsung SSD 860 EVO USB、按序列号交叉核对、排除IsBoot/IsSystem、保护E:/F:、精确确认后才调用DiskPart clean等逻辑保留。
+- 当前允许重新交付该修复版PS1，但用户必须先下载新文件覆盖旧版本，且将EFI ZIP与PS1放在Downloads同一目录；运行时仍先只读识别、确认USB型号/容量/序列号，未输入精确确认语句前不写盘。不得声称实体USB已经制作成功。
