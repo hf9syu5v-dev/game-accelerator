@@ -27,7 +27,7 @@ function Get-CimInstance {
         [string]$ErrorAction
     )
     if ($script:MockCimFailure) { throw 'MOCK_CIM_PROVIDER_FAILURE' }
-    if ($Namespace -ne 'root/Microsoft/Windows/Storage' -or $ClassName -ne 'MSFT_Partition' -or $null -ne $Filter) {
+    if ($Namespace -ne 'root/Microsoft/Windows/Storage' -or $ClassName -ne 'MSFT_Partition' -or -not [string]::IsNullOrEmpty($Filter)) {
         throw ('MOCK_QUERY_ARGUMENTS_MISMATCH: Namespace=[{0}] ClassName=[{1}] Filter=[{2}]' -f $Namespace,$ClassName,$Filter)
     }
     return $script:MockPartitions
