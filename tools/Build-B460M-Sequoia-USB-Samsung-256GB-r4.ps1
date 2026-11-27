@@ -444,7 +444,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
 
     # Remove the temporary drive letter using DiskPart; Windows Storage cmdlets may hide ESP paths.
     $removeDp = Join-Path $work 'remove-esp-letter.txt'
-    @("select volume $espVolumeNumber",'remove letter=' + $espLetter,'exit') | Set-Content -LiteralPath $removeDp -Encoding ASCII
+    @("select volume=$espVolumeNumber",'remove letter=' + $espLetter,'exit') | Set-Content -LiteralPath $removeDp -Encoding ASCII
     $removeOut = @(& diskpart.exe /s $removeDp 2>&1 | ForEach-Object { [string]$_ })
     $removeOut | ForEach-Object { Write-Host $_ }
     if ($LASTEXITCODE -ne 0 -or (($removeOut -join [Environment]::NewLine) -notmatch '(?i)(成功地删除|successfully removed)')) {
