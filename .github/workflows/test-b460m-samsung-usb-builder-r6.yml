@@ -38,8 +38,8 @@ jobs:
           foreach ($x in @('000000123ADC','USBSTOR','PHYSICALDRIVE','IsBoot','IsSystem','BUILD SEQUOIA INSTALLER ON SAMSUNG USB','Get-EspVolumeInfo','E:','F:','TARGET_ESP_DRIVE_LETTER=PRESERVED','XhciPortLimit','0x200703')) {
             if (-not $s.Contains($x)) { throw "R6_REQUIRED_GUARD_MISSING=$x" }
           }
-          if ($s -match "(?m)^\\s*'clean'\\s*,?\\s*$") { throw 'R6_MUST_NOT_DISKPART_CLEAN' }
-          if ($s -match '(?m)^\\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\\b') { throw 'R6_UNEXPECTED_DESTRUCTIVE_CMDLET' }
+          if ($s -match "(?m)^\s*'clean'\\s*,?\\s*$") { throw 'R6_MUST_NOT_DISKPART_CLEAN' }
+          if ($s -match '(?m)^\\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\b') { throw 'R6_UNEXPECTED_DESTRUCTIVE_CMDLET' }
           if ($s -match 'Get-Partition\\s+-DriveLetter\\s+F') { throw 'R6_MUST_ALLOW_TARGET_F_DRIVE' }
           if ($s -match 'mountvol\\.exe') { throw 'R6_MUST_PRESERVE_F_DRIVE_LETTER' }
           if (-not $s.Contains('expected exactly one pre-created 15-17GB EFI partition')) { throw 'R6_PREPARED_ESP_REQUIRED' }
@@ -51,7 +51,7 @@ jobs:
           . 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r6.ps1' -SelfTest
           $vhd = Join-Path $env:RUNNER_TEMP 'b460m-r6-existing-esp.vhdx'
           $before = @((Get-Disk | Select-Object -ExpandProperty Number))
-          if (Test-Path 'F:\\') { throw 'R6_F_DRIVE_ALREADY_IN_USE_ON_RUNNER' }
+          if (Test-Path 'F:\') { throw 'R6_F_DRIVE_ALREADY_IN_USE_ON_RUNNER' }
           $create = Join-Path $env:RUNNER_TEMP 'r6-vhd-create.txt'
           @"
           create vdisk file="$vhd" maximum=32768 type=expandable
