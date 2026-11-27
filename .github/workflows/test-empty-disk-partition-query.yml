@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "tests/powershell/Get-TargetPartitions.Tests.ps1"
+      - "tests/powershell/Get-TargetPartitions.Vhd.Tests.ps1"
       - ".github/workflows/test-empty-disk-partition-query.yml"
   workflow_dispatch:
 
@@ -34,3 +35,21 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           & 'tests/powershell/Get-TargetPartitions.Tests.ps1'
+      - name: Parse VHD integration test with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Resolve-Path 'tests/powershell/Get-TargetPartitions.Vhd.Tests.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($p, [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Host
+            throw 'VHD integration test parser failed.'
+          }
+          Write-Host 'VHD_TEST_POWERSHELL_51_PARSE=PASS'
+      - name: Test CIM partition enumeration against a disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'tests/powershell/Get-TargetPartitions.Vhd.Tests.ps1'
