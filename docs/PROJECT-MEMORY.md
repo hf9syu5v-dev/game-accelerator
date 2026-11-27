@@ -362,3 +362,15 @@
 - 这是辅助电脑连接的实体Samsung USB实际清盘结果，不是GitHub CI模拟。该脚本执行了DiskPart clean，随后初始化GPT并移除Windows自动创建的隐藏MSR，最终Get-Disk/MSFT_Partition验证为GPT且零分区。USB上原有全部分区及数据已清除。按脚本保护条件，辅助电脑Windows系统盘Disk 0、其他磁盘及F:未被选中或写入；之前设备核验显示Disk 0为IsBoot/IsSystem，目标为Disk 1且非Boot/System。
 - 用户在提示行后输入的确认文字在终端回显为`...CREATE EMPTY GPT: ERASE SAMSUNG USB ...`，看起来Read-Host提示文本与输入文字连续显示；但实际脚本已接受确认并成功完成写盘，不能再将这次记录为确认失败。
 - 当前下一步：在继续制作安装介质前，重新核验GitHub main上的当前Builder脚本源文件、目标盘前置检查、下载依赖、EFI包及其SHA256，并检查对应Windows PowerShell 5.1 CI。此前历史本地Builder版本存在不同分支/版本（空盘前置版与三分区E:布局版），不可直接假定哪一版适用；必须以仓库当前最新源和空GPT方案为准。确认Builder只要求目标Samsung USB为GPT零分区，并保持型号/序列号/USB总线/容量/CIM PhysicalDrive关联、系统盘及F:保护和二次确认后，再生成/交付PS1。用户当前实体USB已经是GPT零分区，禁止再次运行Reset脚本；也不要运行未经核验的旧Builder。CI/VHD成功不等于Builder已在实体USB执行，更不等于目标机OpenCore启动成功。
+
+
+## 34. 2026-11-28 Samsung Sequoia USB Builder r3完成核验并通过Windows CI
+- 仓库旧Builder真实展开文件SHA-256由Windows PowerShell 5.1 Actions复算确认：`415ce293bcc536a1bef3742460b62e5f73bde56564b336b1fc18ddd807277fd6`。旧版本是三分区/现有布局保护版，不适用于当前GPT零分区USB；不能运行旧版本。
+- 新Builder r3已加入仓库：`tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1`，Git blob SHA `5c46f851c4d492040896c98979387b851700e73d`，文件SHA-256 `9181c7248bed51c39194b724e28017bc7c2a41718995fd57d333a92424ff2db5`。本地下载文件 `/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1` 已从成功CI artifact逐字节提取，大小25523字节，SHA-256与CI一致。
+- r3目标设备身份要求：Get-Disk FriendlyName以Samsung SSD 860 EVO开头、序列号精确000000123ADC、BusType USB、容量225–240GB、非Boot/System/ReadOnly/Offline；Win32_DiskDrive必须以Index关联相同DiskNumber、DeviceID精确PHYSICALDRIVE路径、Model以Samsung SSD 860 EVO USB Device开头、序列号精确、InterfaceType USB、PNPDeviceID以USBSTOR开头、CIM容量在相同范围且与Get-Disk差值不超过16MiB。执行写入前重新核验两套API及GPT零分区状态。
+- r3仅接受目标盘已为GPT且零分区；不会执行DiskPart clean、Clear-Disk、Initialize-Disk或删除分区。先下载并验证EFI02、OpenCore工具及Recovery，确认后仅在目标USB创建一个16GB FAT32 EFI System Partition，复制EFI和Recovery；分配临时盘符只从G:–Z:选择，保护E:和F:，完成后移除盘符。剩余空间保持未分配。精确确认语句：`CREATE EFI BOOT PARTITION ON SAMSUNG USB 000000123ADC`。
+- EFI02发布资产SHA-256：`c639d82cf099da15afe6fce1b15b47e833c62a9bb77d628a1ccaff4953c1086c`；发布清单SHA-256：`635023086dbbad2bf8b72ad7bb640b234c90f903edbdf6da0f66a3d55d27ac50`。CI下载发布资产并核对60项文件SHA全部通过。OpenCore 1.0.8 RELEASE ZIP SHA-256：`2011e8b7216ecb2645d97ea710df965947edd406846e92050b9bc4190be6d27b`，校验通过。
+- r3在EFI02本地副本上设置XhciPortLimit=False、Timeout=0、ScanPolicy=0x200703；验证UTBMap.kext启用且映射端口数为11。SMBIOS占位值（SystemSerialNumber/MLB/UUID/ROM）保留，不写入仓库；在目标机安装macOS前仍须注入用户批准的临时测试三码或正式三码。
+- 新增Windows CI workflow：`.github/workflows/test-b460m-samsung-empty-gpt-builder-r3.yml`。Run `46076303099`，commit `bdd25e3d3bf835e7cb615586a45dbd0b9f926433`，Windows Server 2022 / Windows PowerShell 5.1结论success。验证项：旧Builder SHA复算；r3 Parser通过；身份/容量/物理设备/系统盘拒绝及空GPT SelfTest通过；静态保护检查通过；EFI02发布包、60项清单、OpenCore SHA、EFI配置修正、UTBMap 11端口和macrecovery --help/verify_image API smoke test通过；在临时VHD上实际验证GPT零分区检测和16GB FAT32 ESP创建成功。Recovery smoke test未实际下载完整Apple BaseSystem镜像；实际Recovery下载及chunklist验证由用户运行Builder时完成。
+- CI/VHD验证不是用户实体USB制作结果，也不是目标机OpenCore实机启动结果。辅助电脑实体Samsung USB当前仍为GPT零分区，未由Builder写入。
+- 当前下一步：用户按PowerShell两步法下载并运行r3；管理员Windows PowerShell 5.1执行。脚本会重新核验目标设备并要求精确确认。用户回传完整输出后，检查实体USB实际分区布局、EFI文件和Recovery文件；不要把CI成功当作实体USB制作成功。安装macOS前必须先处理EFI02 SMBIOS占位值。
