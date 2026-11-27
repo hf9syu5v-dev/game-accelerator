@@ -32,36 +32,36 @@ jobs:
           if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
           $builderText = Get-Content -LiteralPath $scriptPath -Raw
           $oldPartitionFunction = @'
-function Get-TargetPartitions {
-    [CmdletBinding()]
-    param([Parameter(Mandatory=$true)][uint32]$DiskNumber)
-    try {
-        $filter = 'DiskNumber = {0}' -f $DiskNumber
-        $found = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -Filter $filter -ErrorAction Stop)
-        return $found
-    }
-    catch {
-        throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber, $_.Exception.Message)
-    }
-}
-'@
+          function Get-TargetPartitions {
+              [CmdletBinding()]
+              param([Parameter(Mandatory=$true)][uint32]$DiskNumber)
+              try {
+                  $filter = 'DiskNumber = {0}' -f $DiskNumber
+                  $found = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -Filter $filter -ErrorAction Stop)
+                  return $found
+              }
+              catch {
+                  throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber, $_.Exception.Message)
+              }
+          }
+          '@
           $newPartitionFunction = @'
-function Get-TargetPartitions {
-    [CmdletBinding()]
-    param([Parameter(Mandatory=$true)][uint32]$DiskNumber)
-    try {
-        # Avoid provider-side WQL filter failures for empty disks.
-        $allPartitions = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
-        $found = @($allPartitions | Where-Object {
-            $null -ne $_.DiskNumber -and [uint32]$_.DiskNumber -eq $DiskNumber
-        })
-        return $found
-    }
-    catch {
-        throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber, $_.Exception.Message)
-    }
-}
-'@
+          function Get-TargetPartitions {
+              [CmdletBinding()]
+              param([Parameter(Mandatory=$true)][uint32]$DiskNumber)
+              try {
+                  # Avoid provider-side WQL filter failures for empty disks.
+                  $allPartitions = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
+                  $found = @($allPartitions | Where-Object {
+                      $null -ne $_.DiskNumber -and [uint32]$_.DiskNumber -eq $DiskNumber
+                  })
+                  return $found
+              }
+              catch {
+                  throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber, $_.Exception.Message)
+              }
+          }
+          '@
           if (-not $builderText.Contains($oldPartitionFunction)) { throw 'OLD_PARTITION_FUNCTION_NOT_FOUND_IN_BUILDER_FIXTURE' }
           $builderText = $builderText.Replace($oldPartitionFunction,$newPartitionFunction)
           $builderText = $builderText.Replace('    Invoke-VirtualDiskLayoutSelfTest', '    # VHD integration is independently exercised in the following isolated step.')
