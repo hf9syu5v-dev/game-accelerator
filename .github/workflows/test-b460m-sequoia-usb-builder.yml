@@ -50,4 +50,4 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
           & $scriptPath -SelfTest
-          if ($LASTEXITCODE -ne 0) { throw "BUILDER_SELFTEST_EXIT=$LASTEXITCODE" }
+          if (-not $?) { throw "BUILDER_SELFTEST_FAILED" }
