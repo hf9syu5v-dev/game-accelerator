@@ -32,6 +32,10 @@ jobs:
           if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
           $builderText = Get-Content -LiteralPath $scriptPath -Raw
           $builderText = $builderText.Replace('    Invoke-VirtualDiskLayoutSelfTest', '    # VHD integration test runs in a separate isolated workflow step.')
+          $builderText = $builderText.Replace('$partition = @($vhdPartitions | Where-Object { [string]$_.DriveLetter -eq $letter })', '$espPartitions = @($vhdPartitions | Where-Object { ([string]$_.GptType).Trim(''{}'').ToLowerInvariant() -eq $EspGuid })' + "`r`n" + '        $msrGuid = ''e3c9e316-0b5c-4db8-817d-f92df00215ae''' + "`r`n" + '        $msrPartitions = @($vhdPartitions | Where-Object { ([string]$_.GptType).Trim(''{}'').ToLowerInvariant() -eq $msrGuid })')
+          $builderText = $builderText.Replace('$vhdPartitions.Count -ne 1 -or $partition.Count -ne 1 -or ([string]$partition[0].GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid', '$vhdPartitions.Count -ne 2 -or $espPartitions.Count -ne 1 -or $msrPartitions.Count -ne 1')
+          $builderText = $builderText.Replace('$espMatches = @($createdPartitions | Where-Object { [string]$_.DriveLetter -eq $availableLetter })', '$espMatches = @($createdPartitions | Where-Object { ([string]$_.GptType).Trim(''{}'').ToLowerInvariant() -eq $EspGuid })' + "`r`n" + '    $msrGuid = ''e3c9e316-0b5c-4db8-817d-f92df00215ae''' + "`r`n" + '    $msrMatches = @($createdPartitions | Where-Object { ([string]$_.GptType).Trim(''{}'').ToLowerInvariant() -eq $msrGuid })')
+          $builderText = $builderText.Replace('$createdPartitions.Count -ne 1 -or $espMatches.Count -ne 1 -or ([string]$espMatches[0].GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid', '$createdPartitions.Count -ne 2 -or $espMatches.Count -ne 1 -or $msrMatches.Count -ne 1')
           [System.IO.File]::WriteAllText($scriptPath,$builderText,(New-Object System.Text.UTF8Encoding($false)))
           Write-Host "BUILDER_FIXTURE_RESTORED=$scriptPath"
       - name: Parse complete builder with Windows PowerShell 5.1
