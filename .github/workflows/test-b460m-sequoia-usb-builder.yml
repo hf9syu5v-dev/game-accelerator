@@ -83,12 +83,12 @@ jobs:
           }
           $vhdDisk = $newDisks[0]
           $parts = @(Get-Partition -DiskNumber $vhdDisk.Number -ErrorAction Stop)
-          $vol = Get-Volume -DriveLetter $letter -ErrorAction Stop
+          $vol = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $letter) -ErrorAction Stop
           $espGuid = 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b'
           if ($vhdDisk.PartitionStyle -ne 'GPT' -or $parts.Count -ne 1 -or
               ([string]$parts[0].GptType).Trim('{}').ToLowerInvariant() -ne $espGuid -or
               [string]$parts[0].DriveLetter -ne $letter -or
-              $vol.FileSystem -ne 'FAT32' -or $vol.FileSystemLabel -ne 'OC-SEQUOIA') {
+              $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') {
             Get-Disk -Number $vhdDisk.Number | Format-List * | Out-String | Write-Host
             $parts | Format-List * | Out-String | Write-Host
             $vol | Format-List * | Out-String | Write-Host
