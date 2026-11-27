@@ -150,7 +150,11 @@ jobs:
           Remove-Partition -DiskNumber $d.Number -PartitionNumber $msr[0].PartitionNumber -Confirm:$false -ErrorAction Stop
           if (Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue) { Update-HostStorageCache -ErrorAction SilentlyContinue }
           Start-Sleep -Seconds 2
-          $emptyParts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+          $emptyParts = @()
+          try { $emptyParts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop) }
+          catch {
+            if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound_DiskNumber*') { throw }
+          }
           $allMsft = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
           $emptyMsft = @($allMsft | Where-Object { [uint32]$_.DiskNumber -eq [uint32]$d.Number })
           if ($d.PartitionStyle -ne 'GPT' -or $emptyParts.Count -ne 0 -or $emptyMsft.Count -ne 0) { throw 'R3_VHD_EMPTY_GPT_PRECONDITION_FAILED' }
@@ -162,6 +166,7 @@ jobs:
           $parts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
           $esp = @($parts | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' })
           $vol = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $letter) -ErrorAction Stop
+          Write-Host ("R3_VHD_FINAL_PARTITIONS={0}; ESP_COUNT={1}; ESP_SIZE={2}; FS={3}; LABEL={4}" -f $parts.Count,$esp.Count,$esp[0].Size,$vol.FileSystem,$vol.VolumeName)
           if ($parts.Count -ne 1 -or $esp.Count -ne 1 -or $esp[0].Size -lt 15GB -or $esp[0].Size -gt 17GB -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') { throw 'R3_VHD_ESP_LAYOUT_INVALID' }
           Write-Host 'R3_DISPOSABLE_VHD_GPT_ESP_FAT32_LAYOUT=PASS'
           $detach = Join-Path $env:RUNNER_TEMP 'r3-vhd-detach.txt'
