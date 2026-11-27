@@ -197,3 +197,15 @@
 - 最终脚本内嵌Python补丁已在实际EFI02包的临时解压副本上再次执行成功，返回EFI02_LOCAL_PATCH_AND_STRUCTURAL_CHECK=PASS；验证ROM为6字节Data、UTBMap=11、XhciPortLimit=False、Picker Timeout=0、ScanPolicy=0x200703。
 - 最终静态检查：PowerShell 5.1/Admin要求、型号/串号/USB总线/容量匹配、CIM交叉核对、启动/系统盘排除、目标无分区前置条件、动态G:–Z:盘符（排除E:/F:）、精确确认短语、EFI与OpenCore包SHA校验、Sequoia Board-ID、括号平衡均通过。
 - 当前执行环境无Windows PowerShell运行时，不能宣称PowerShell解析或实机执行已通过。用户在辅助电脑以管理员身份运行后，先观察只读识别/下载校验阶段；只有所有检查通过并输入精确确认短语后才会格式化USB。
+
+
+
+## 18. 2026-11-28 USB构建脚本空盘检测故障与修复
+- 用户在辅助电脑以管理员Windows PowerShell 5.1运行Build-B460M-Sequoia-USB-Samsung-256GB.ps1，脚本在开头目标盘分区状态检查处停止，错误为：找不到任何“DiskNumber”属性等于“1”的MSFT_Partition对象。
+- 该错误来自对空磁盘调用Get-Partition -DiskNumber并设置ErrorAction Stop。目标USB先前已删除全部分区；在部分Windows Storage模块版本中，无分区时Get-Partition抛出“找不到MSFT_Partition对象”，而不是返回空集合。
+- 根据执行顺序，该异常发生在任何DiskPart/clean/format/partition命令之前；本次没有执行清盘或分区写入。用户回传日志未显示后续步骤启动。
+- 已在本地修订脚本：新增Get-TargetPartitions函数，直接查询root/Microsoft/Windows/Storage中的MSFT_Partition CIM类；空结果作为正常零分区状态，CIM提供程序/访问错误仍会终止脚本。将初始检查、下载准备后的复核、最终写盘前复核三处Get-Partition查询全部替换为该函数。
+- 修订文件路径：/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1；SHA-256：f137d3ad339f4daf87203c55870eaf67004be3a76db3636b28bd62f0430b86b2。
+- 本地静态检查通过：三处调用均已替换；不再含旧Get-Partition -DiskNumber查询；目标USB型号/序列号/USB总线/容量校验、Win32_DiskDrive交叉校验、IsBoot/IsSystem保护、E:/F:排除、精确破坏性确认、DiskPart clean仍位于用户确认之后，均保留。
+- 验证限制：当前工作容器没有Windows PowerShell 5.1、PowerShell 7、Windows VM或可用的GitHub Actions workflow-dispatch工具；因此修订版尚未完成真实PowerShell 5.1解析/运行、Windows VM测试或GitHub Actions测试。不得声称修订版已经通过这些测试，也不得让用户将其视为已完成验证的正式构建脚本。
+- 下一步：先取得Windows PowerShell 5.1解析与模拟空/非空MSFT_Partition查询的验证，再执行GitHub Actions验证；两项通过后才发布修订脚本下载链接和独立执行命令。验证完成前不得对目标USB运行修订脚本。
