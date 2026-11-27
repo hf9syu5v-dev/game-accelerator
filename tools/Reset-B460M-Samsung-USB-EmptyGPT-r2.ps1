@@ -20,25 +20,27 @@ function Test-CimDiskIdentity {
     $modelOK = ([string]$CimDisk.Model).Trim() -like "$ExpectedModel*"
     $serialOK = ([string]$CimDisk.SerialNumber).Trim() -eq $ExpectedSerial
     $indexOK = $cimIndex -eq $diskNumber
+    $deviceIdOK = ([string]$CimDisk.DeviceID) -eq "\\.\PHYSICALDRIVE$diskNumber"
     $interfaceOK = ([string]$CimDisk.InterfaceType) -eq 'USB'
     $pnpOK = ([string]$CimDisk.PNPDeviceID).StartsWith('USBSTOR\',[StringComparison]::OrdinalIgnoreCase)
     $sizeRangeOK = $cimSize -ge $MinSize -and $cimSize -le $MaxSize
     $sizeDeltaOK = $delta -le $SizeTolerance
     [pscustomobject]@{
-        Match = ($modelOK -and $serialOK -and $indexOK -and $interfaceOK -and $pnpOK -and $sizeRangeOK -and $sizeDeltaOK)
-        ModelMatch=$modelOK; SerialMatch=$serialOK; IndexMatch=$indexOK
+        Match = ($modelOK -and $serialOK -and $indexOK -and $deviceIdOK -and $interfaceOK -and $pnpOK -and $sizeRangeOK -and $sizeDeltaOK)
+        ModelMatch=$modelOK; SerialMatch=$serialOK; IndexMatch=$indexOK; DeviceIdMatch=$deviceIdOK
         InterfaceMatch=$interfaceOK; PnpUsbStorMatch=$pnpOK
         CimSizeInRange=$sizeRangeOK; SizeDeltaBytes=$delta; SizeDeltaWithin16MiB=$sizeDeltaOK
     }
 }
-
 if ($SelfTest) {
     $disk = [pscustomobject]@{ Number=1; Size=[int64]250059350016 }
-    $good = [pscustomobject]@{ Index=1; Model='Samsung SSD 860 EVO USB Device'; SerialNumber='000000123ADC'; Size=[int64]250056737280; InterfaceType='USB'; PNPDeviceID='USBSTOR\DISK&VEN_SAMSUNG&PROD_SSD_860_EVO\000000123ADC&0' }
+    $good = [pscustomobject]@{ Index=1; DeviceID='\\.\PHYSICALDRIVE1'; Model='Samsung SSD 860 EVO USB Device'; SerialNumber='000000123ADC'; Size=[int64]250056737280; InterfaceType='USB'; PNPDeviceID='USBSTOR\DISK&VEN_SAMSUNG&PROD_SSD_860_EVO\000000123ADC&0' }
     $r = Test-CimDiskIdentity -Disk $disk -CimDisk $good
     if (-not $r.Match -or -not $r.SizeDeltaWithin16MiB -or -not $r.IndexMatch) { throw 'SELFTEST_VALID_USB_MATCH_FAILED' }
     $badIndex = $good | Select-Object *; $badIndex.Index = 0
     if ((Test-CimDiskIdentity -Disk $disk -CimDisk $badIndex).Match) { throw 'SELFTEST_WRONG_PHYSICALDRIVE_INDEX_ACCEPTED' }
+    $badDeviceId = $good | Select-Object *; $badDeviceId.DeviceID = '\\\\.\\PHYSICALDRIVE0'
+    if ((Test-CimDiskIdentity -Disk $disk -CimDisk $badDeviceId).Match) { throw 'SELFTEST_WRONG_DEVICE_ID_ACCEPTED' }
     $badSerial = $good | Select-Object *; $badSerial.SerialNumber = 'WRONG'
     if ((Test-CimDiskIdentity -Disk $disk -CimDisk $badSerial).Match) { throw 'SELFTEST_WRONG_SERIAL_ACCEPTED' }
     $badBus = $good | Select-Object *; $badBus.InterfaceType = 'IDE'
@@ -47,13 +49,13 @@ if ($SelfTest) {
     if ((Test-CimDiskIdentity -Disk $disk -CimDisk $badSize).Match) { throw 'SELFTEST_EXCESSIVE_SIZE_DELTA_ACCEPTED' }
     Write-Host 'SELFTEST_VALID_USB_MATCH_WITH_2_5MIB_PROVIDER_DELTA=PASS'
     Write-Host 'SELFTEST_WRONG_DISK_INDEX_REJECTED=PASS'
+    Write-Host 'SELFTEST_WRONG_DEVICE_ID_REJECTED=PASS'
     Write-Host 'SELFTEST_WRONG_SERIAL_REJECTED=PASS'
     Write-Host 'SELFTEST_NON_USB_REJECTED=PASS'
     Write-Host 'SELFTEST_EXCESSIVE_SIZE_DELTA_REJECTED=PASS'
     exit 0
 }
-
-function Stop-Safely([string]$Message) { throw "SAFETY_STOP: $Message No disk changes made before the confirmation and DiskPart stages." }
+function Stop-Safely([string]$Message) { throw "SAFETY_STOP: $Message" }
 try {
     Write-Host 'B460M SAMSUNG USB RESET - EMPTY GPT (REVISION 2)' -ForegroundColor Cyan
     Write-Host 'Destructive: all partitions and data on the precisely matched USB will be erased.' -ForegroundColor Yellow
@@ -71,7 +73,7 @@ try {
     if ($matchedCim.Count -ne 1) {
         $allCim | ForEach-Object {
             $m = Test-CimDiskIdentity -Disk $target -CimDisk $_
-            [pscustomobject]@{Index=$_.Index;DeviceID=$_.DeviceID;Model=$_.Model;SerialNumber=$_.SerialNumber;InterfaceType=$_.InterfaceType;SizeBytes=$_.Size;SizeDeltaBytes=$m.SizeDeltaBytes;IndexMatch=$m.IndexMatch;SerialMatch=$m.SerialMatch;SizeDeltaWithin16MiB=$m.SizeDeltaWithin16MiB;PNPDeviceID=$_.PNPDeviceID} | Format-List | Out-Host
+            [pscustomobject]@{Index=$_.Index;DeviceID=$_.DeviceID;Model=$_.Model;SerialNumber=$_.SerialNumber;InterfaceType=$_.InterfaceType;SizeBytes=$_.Size;SizeDeltaBytes=$m.SizeDeltaBytes;IndexMatch=$m.IndexMatch;DeviceIdMatch=$m.DeviceIdMatch;SerialMatch=$m.SerialMatch;SizeDeltaWithin16MiB=$m.SizeDeltaWithin16MiB;PNPDeviceID=$_.PNPDeviceID} | Format-List | Out-Host
         }
         Stop-Safely "Win32_DiskDrive identity must match exactly one PHYSICALDRIVE index with USBSTOR, USB interface, exact serial/model, and <=16MiB size delta; found $($matchedCim.Count)."
     }
