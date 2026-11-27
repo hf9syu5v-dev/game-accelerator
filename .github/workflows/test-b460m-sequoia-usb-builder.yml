@@ -30,6 +30,9 @@ jobs:
           [System.IO.File]::WriteAllBytes($scriptPath,$output.ToArray())
           $input.Dispose(); $gzip.Dispose(); $output.Dispose()
           $builderText = Get-Content -LiteralPath $scriptPath -Raw
+          Write-Host '--- SELFTEST SOURCE LINES ---'
+          $builderText -split "`r?`n" | Select-String -Pattern 'vhdDisk|virtualDisk|Get-Disk|Get-Partition|beforeNumbers|DiskPart|diskpart' | ForEach-Object { Write-Host ("SOURCE: " + $_.Line) }
+          Write-Host '--- END SELFTEST SOURCE ---'
           $builderText = $builderText.Replace('$partition = Get-Partition -DriveLetter $letter -ErrorAction Stop', '$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))' + "`r`n" + '        $partition = @($vhdPartitions | Where-Object { [string]$_.DriveLetter -eq $letter })')
           $builderText = $builderText.Replace('$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))', '$allDisks = @(Get-Disk | Select-Object Number,FriendlyName,BusType,Size,PartitionStyle)' + "`r`n" + '        Write-Host (''ALL_DISKS={0}'' -f (($allDisks | ForEach-Object { ''N={0},Name={1},Bus={2},Size={3},Style={4}'' -f $_.Number,$_.FriendlyName,$_.BusType,$_.Size,$_.PartitionStyle }) -join '' | ''))' + "`r`n" + '$logicalMap = @(Get-CimInstance Win32_LogicalDiskToPartition -ErrorAction Stop | Where-Object { $_.Dependent -match (''DeviceID="'' + $letter + '':"'') })' + "`r`n" + '        Write-Host (''LOGICAL_MAP={0}'' -f ($logicalMap | Out-String))' + "`r`n" + '$vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))')
           $builderText = $builderText.Replace('$volume = Get-Volume -DriveLetter $letter -ErrorAction Stop', '$volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID=''{0}:''" -f $letter) -ErrorAction Stop')
