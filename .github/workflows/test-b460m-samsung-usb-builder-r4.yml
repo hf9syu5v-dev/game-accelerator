@@ -72,12 +72,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'R4_VHD_ESP_CREATE_FAILED' }
           $line = $out | Where-Object { $_ -match '(?i)^\\s*(?:卷|Volume)\\s+\\d+\\s+[A-Z]\\s+OC-SEQUOIA\\s+FAT32\\b' }
           if (@($line).Count -ne 1) { $out | Write-Host; throw 'R4_VHD_DETAIL_VOLUME_NOT_FOUND' }
+          if ($line -notmatch '(?i)^\s*(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') { throw 'R4_VHD_DETAIL_VOLUME_PARSE_FAILED' }
+          $volumeNumber = $Matches[1]
           if (-not (Test-Path ($letter + ':\\') -PathType Container)) { throw 'R4_VHD_DRIVE_LETTER_NOT_ACCESSIBLE' }
           Set-Content -LiteralPath ($letter + ':\\R4-TEST.txt') -Value 'copy-access-pass'
           if (-not (Test-Path ($letter + ':\\R4-TEST.txt'))) { throw 'R4_VHD_COPY_ACCESS_FAILED' }
           Write-Host 'R4_EXISTING_ESP_DISKPART_DISCOVERY_AND_FILESYSTEM_ACCESS=PASS'
           $detach = Join-Path $env:RUNNER_TEMP 'r4-vhd-detach.txt'
-          @('select volume 1','remove letter=' + $letter,'exit') | Set-Content -LiteralPath $detach -Encoding ASCII
+          @('select volume ' + $volumeNumber,'remove letter=' + $letter,'exit') | Set-Content -LiteralPath $detach -Encoding ASCII
           & diskpart.exe /s $detach
           $vdetach = Join-Path $env:RUNNER_TEMP 'r4-vhd-vdetach.txt'
           @('select vdisk file="' + $vhd + '"','detach vdisk','exit') | Set-Content -LiteralPath $vdetach -Encoding ASCII
