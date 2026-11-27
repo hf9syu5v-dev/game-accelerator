@@ -443,3 +443,11 @@
 - 写入前备份 `F:\EFI\OC\config.plist`；只改 `PlatformInfo.Generic.SystemSerialNumber`、`MLB`、`SystemUUID` 三项。保留 `SystemProductName=iMac20,1`、ROM、UTBMap 11端口、XhciPortLimit=False、Timeout=0、ScanPolicy=0x200703。只接受当前三个字段仍为占位值；任何字段不是预期占位值即停止。写入通过Python plistlib原子替换并回读验证；失败从备份恢复。
 - CI通过表示Windows PowerShell 5.1语法、生产补丁函数自测和静态安全审计通过；不代表已在用户实体USB上运行，也不代表目标主机实机启动成功。
 - 当前恢复点：将本地脚本按两步法交付用户：先下载PS1，再单独执行。执行命令需在管理员Windows PowerShell 5.1中运行。用户回传完整输出后，再只读核对config.plist三个字段和备份文件；不要要求用户重新分区或格式化。
+
+
+## 42. 2026-11-28 实体U盘临时测试SMBIOS写入成功，进入目标机首启
+- 用户在辅助Windows电脑以当前PowerShell进程临时Bypass执行 `Write-B460M-SMBIOS-Test-To-USB.ps1`，回传实际输出：`SMBIOS_TEST_FIELDS_WRITE=PASS`、`SYSTEM_PRODUCT_NAME=iMac20,1`、`ROM=UNCHANGED`、`UTBMAP=UNCHANGED`、`TEMPORARY_TEST_IDENTIFIERS_ONLY=YES`。
+- 原配置已备份至实体安装盘：`F:\EFI\OC\config.plist.pre-test-smbios-20261128-073243.bak`。本次只写入三个临时测试字段；ROM和UTBMap未修改。用户明确系统安装完成后自行更换正式三码。
+- 这证明辅助电脑所连接的实体Samsung SSD 860 EVO USB安装介质上的SMBIOS临时字段写入脚本报告成功；尚未进行目标ASUS主板实机启动，不能宣称OpenCore或macOS安装已实机验证。
+- 当前恢复点：进入目标ASUS TUF GAMING B460M-PLUS首启测试。关机状态下确认HP EX900 Plus 256GB NVMe仍为Sequoia目标盘；安装期间物理断开Samsung 860 EVO SATA盘；将已制作好的Samsung SSD 860 EVO USB安装介质接入主板后置USB接口，显示器接RX570 DisplayPort。开机按ASUS启动菜单键F8，选择USB对应的UEFI启动项。OpenCore Picker出现后选择macOS Base System/Recovery启动项进入macOS Recovery。暂不更改EFI或重置NVRAM；如启动失败，拍摄屏幕最后停留位置/错误信息并回传。
+- 到达Recovery后先确认磁盘工具中显示的物理目标设备确为HP EX900 Plus 256GB，再由用户按既定分工自行执行目标盘抹盘/格式化；不得误选辅助电脑磁盘或Samsung安装介质。用户完成目标盘准备并确认后再继续安装Sequoia。
