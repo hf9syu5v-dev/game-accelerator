@@ -160,3 +160,31 @@
 - Disk 1是USB连接的Samsung SSD 860 EVO，约232.89GB；可能对应用户计划的256GB移动安装盘，但仍需用户确认其物理身份。确认前不对Disk 1写入。
 - HP 250GB NVMe安装目标盘留在无系统的黑苹果目标机内部，不会自然出现在辅助电脑的Get-Disk结果中；不应要求用户为了识别它而在目标机运行Windows。后续可在macOS Recovery磁盘工具中识别并抹盘，届时仍须先核对物理型号/容量再执行。
 - 目前唯一必要的用户确认：辅助电脑Disk 1（USB Samsung SSD 860 EVO，232.89GB）是否就是那块计划用作OpenCore + Sequoia Recovery安装介质的256GB移动盘。
+
+
+## 16. 2026-11-28 安装介质身份确认与新构建方案
+用户已明确确认：辅助电脑 Disk 1（USB接口 Samsung SSD 860 EVO，约232.89GiB/标称250GB）就是原规划的256GB移动安装盘，作用相当于之前的8GB U盘。该盘用于OpenCore + macOS Sequoia Recovery；辅助电脑Disk 0仍为Windows系统盘，永久保护。HP 250GB NVMe位于无系统的黑苹果目标机内部，不应要求它出现在辅助电脑磁盘列表中。
+### 现有旧构建脚本不可用于当前安装盘
+- 检查分支opencore-1.0.5-sequoia-rx570中的Build-B460M-Sequoia-Native-Recovery-USB.ps1、Start-B460M-Sequoia-USB-Build.ps1、Repair-B460M-Sequoia-USB-EspType.ps1。
+- 这些旧脚本把目标硬盘硬编码为LITEON I T LCS-128L9S、115–125GB，尽管串号字符串与当前USB设备相同，但当前设备报告型号为Samsung SSD 860 EVO、容量约232.89GiB。旧脚本的型号和容量条件不匹配，严禁让用户运行旧脚本或修改后猜测执行。
+### EFI02与Sequoia配置复核
+- 重新下载并检查artifact 15138240431，外层ZIP SHA-256仍为e28d7fc6aa3096d01266b94db15255de62aad9c7e3ff39bc7b44f07cff409bcc；内层EFI ZIP SHA-256为baab37149a72b7a373adb92c6b575523bb97d57780cefb04f7ac9e7e2ad08271。
+- EFI02源配置当前Kernel.Quirks.XhciPortLimit=True、Misc.Boot.Timeout=5、Misc.Security.ScanPolicy=0，与Sequoia+已完成UTBMap的首启安全配置不合适。首启介质本地构建时需改为XhciPortLimit=False、Timeout=0、ScanPolicy=0x200703（仅USB/APFS/HFS/ESP扫描），并保持Picker显示、UTBMap 11端口映射不变。
+- OpenCore官方1.0.8 RELEASE包asset digest已通过GitHub API读取：2011e8b7216ecb2645d97ea710df965947edd406846e92050b9bc4190be6d27b。
+- 当前Dortania OpenCore Install Guide的Sequoia下载指引使用Board-ID Mac-7BA5B2D9E42DDD94；macrecovery会校验Apple chunklist并校验DMG分块哈希。指南同时警告macOS 11.3+的XhciPortLimit不可用，已映射USB应关闭该Quirk。参考：Dortania Windows install guide / recovery guide。
+### 本轮本地交付文件（未提交公开仓库）
+- 已真实生成/mnt/data/B460M-Baseline-EFI-02.zip，从已下载的EFI02 workflow artifact内部原始ZIP字节提取，大小4,647,868 bytes，SHA-256 baab37149a72b7a373adb92c6b575523bb97d57780cefb04f7ac9e7e2ad08271。该包供本地构建脚本校验，不把公开release资产的不同digest混用。
+- 已真实生成/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1，约21.6KB，PowerShell 5.1目标，SHA-256 9b400a0a10159dec0f5ff63e915a314ba5f674dd2965ceb4c175d9ceaa922fed。
+- 新脚本仅匹配辅助电脑USB设备的准确型号、串号、USB总线和225–240GiB容量范围，不硬编码磁盘编号；并通过Win32_DiskDrive交叉核对。要求目标盘当前无分区，且IsBoot/IsSystem均为False。
+- 新脚本明确不使用/不分配E:或F:；从G:–Z:动态选择空闲盘符。
+- 新脚本在任何写盘前先下载并校验EFI02包与OpenCore 1.0.8 RELEASE工具包，下载Sequoia Recovery并由macrecovery验证Apple chunklist；检查EFI文件、启用kext/ACPI/driver路径和UTBMap 11端口。
+- 新脚本在本地config.plist中应用此前用户批准的临时测试SMBIOS集（不将其值写入本记忆或公开仓库），并设置XhciPortLimit=False、Picker Timeout=0、ScanPolicy=0x200703；保持EFI02 OpenCore 1.0.8 RELEASE基线。
+- 新脚本格式化前再次按身份重新匹配目标盘，并要求精确输入包含USB设备串号的确认短语。只创建16GB GPT EFI System Partition/FAT32，其余容量保持未分配。格式化后核验ESP GUID、FAT32卷标和逐文件SHA-256；不触碰Disk 0、HP NVMe、E:、F:或Samsung SATA系统盘。
+- 对嵌入Python配置补丁已在实际EFI02副本上执行，返回EFI02_LOCAL_PATCH_AND_STRUCTURAL_CHECK=PASS，并验证11端口UTBMap、XhciPortLimit=False、Timeout=0、ScanPolicy=0x200703及ROM Data类型。
+- 静态检查确认PowerShell脚本文件存在、PS 5.1/Admin要求、目标身份匹配、确认机制、E/F排除、哈希检查、括号平衡和Python补丁块结构。当前执行环境没有Windows PowerShell运行时，因此尚未在真实Windows PowerShell 5.1中做解析/运行测试；必须如实说明，不得宣称已实机执行成功。
+### 当前待办
+1. 用户下载上述PS1和EFI02 ZIP到辅助电脑Downloads同一目录。
+2. 以管理员身份运行PS1；先让脚本下载Recovery、做校验，确认目标设备身份后，再由用户在脚本内输入精确确认短语才会格式化USB。
+3. 构建成功后，将USB接入ASUS TUF GAMING B460M-PLUS，首次只测试能否显示OpenCore Picker；不要在本轮自动抹除HP NVMe。
+4. 目标机从Recovery启动后，先在磁盘工具“显示所有设备”中识别HP NVMe的实际型号和容量，再确认物理设备后抹为GUID/APFS/Sequoia；Samsung 860 EVO SATA系统盘安装期间物理断开。
+5. 每次关键变更继续更新本文件；不把临时SMBIOS值写入公开GitHub。
