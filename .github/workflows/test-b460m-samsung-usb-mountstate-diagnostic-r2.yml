@@ -1,0 +1,31 @@
+name: Test B460M Samsung USB ESP mount diagnostic r2
+on:
+  push:
+    paths:
+      - 'tools/Diagnose-B460M-Samsung-USB-MountState-ReadOnly-r2.ps1'
+      - '.github/workflows/test-b460m-samsung-usb-mountstate-diagnostic-r2.yml'
+  workflow_dispatch:
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $path = 'tools/Diagnose-B460M-Samsung-USB-MountState-ReadOnly-r2.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $path), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Host; throw 'POWERSHELL_51_PARSE_FAILED' }
+          Write-Host 'POWERSHELL_51_PARSE=PASS'
+      - name: Static read-only safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Get-Content 'tools/Diagnose-B460M-Samsung-USB-MountState-ReadOnly-r2.ps1' -Raw
+          $forbidden = @('Clear-Disk','Format-Volume','Initialize-Disk','New-Partition','Remove-Partition','Remove-PartitionAccessPath','Set-Partition','Set-Disk','clean','format fs=','delete partition','delete volume','create partition','attributes volume clear','attributes partition clear')
+          foreach ($x in $forbidden) { if ($p -match [regex]::Escape($x)) { throw "FORBIDDEN_WRITE_TOKEN=$x" } }
+          if ($p -notmatch 'Get-Volume' -or $p -notmatch 'attributes volume' -or $p -notmatch 'mountvol.exe G: /L') { throw 'EXPECTED_READ_ONLY_DIAGNOSTICS_MISSING' }
+          Write-Host 'READ_ONLY_STATIC_AUDIT=PASS'
