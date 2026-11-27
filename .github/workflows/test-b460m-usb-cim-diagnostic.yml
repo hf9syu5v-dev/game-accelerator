@@ -1,0 +1,28 @@
+name: Validate USB CIM diagnostic (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Diagnose-B460M-USB-CIM-Match.ps1"
+      - ".github/workflows/test-b460m-usb-cim-diagnostic.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse read-only diagnostic
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='tools/Diagnose-B460M-USB-CIM-Match.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){$errors|Format-List|Out-String|Write-Host;throw 'DIAGNOSTIC_PARSE_FAILED'}
+          $s=Get-Content $p -Raw
+          if($s -match '(?im)\b(clean|format|clear-disk|remove-partition|new-partition|initialize-disk|set-disk)\s'){throw 'WRITE_COMMAND_FOUND_IN_READ_ONLY_DIAGNOSTIC'}
+          if($s -notmatch 'Get-CimInstance' -or $s -notmatch 'Get-Disk'){throw 'IDENTITY_PROBES_MISSING'}
+          Write-Host 'USB_CIM_DIAGNOSTIC_POWERSHELL_51_PARSE=PASS'
+          Write-Host 'USB_CIM_DIAGNOSTIC_READ_ONLY_STATIC_CHECK=PASS'
