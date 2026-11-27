@@ -121,7 +121,24 @@ jobs:
           '@ | Set-Content -LiteralPath $helper -Encoding ASCII
           & python $helper (Join-Path $root 'OC\config.plist') (Join-Path $root 'OC\Kexts\UTBMap.kext\Contents\Info.plist')
           if ($LASTEXITCODE -ne 0) { throw 'EFI02_CONFIG_PATCH_TEST_FAILED' }
-          Write-Host 'EFI02_RELEASE_ASSET_MANIFEST_OPENCORE_AND_CONFIG_CHECKS=PASS'
+          $ocDir = Join-Path $dir 'OpenCoreTools'
+          Expand-Archive -LiteralPath $ocZip -DestinationPath $ocDir -Force
+          $macrec = @(Get-ChildItem -LiteralPath $ocDir -Filter 'macrecovery.py' -File -Recurse)
+          if ($macrec.Count -ne 1) { throw "MACRECOVERY_SCRIPT_COUNT=$($macrec.Count)" }
+          & python $macrec[0].FullName --help 2>&1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'MACRECOVERY_HELP_SMOKE_TEST_FAILED' }
+          $moduleCheck = Join-Path $dir 'check-macrecovery.py'
+          @'
+          import importlib.util,sys
+          spec=importlib.util.spec_from_file_location("macrecovery",sys.argv[1])
+          m=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(m)
+          assert callable(getattr(m,"verify_image",None))
+          print("MACRECOVERY_VERIFY_IMAGE_API=PASS")
+          '@ | Set-Content -LiteralPath $moduleCheck -Encoding ASCII
+          & python $moduleCheck $macrec[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'MACRECOVERY_VERIFY_IMAGE_API_TEST_FAILED' }
+          Write-Host 'EFI02_RELEASE_ASSET_MANIFEST_OPENCORE_MACRECOVERY_AND_CONFIG_CHECKS=PASS'
 
       - name: Exercise empty-GPT precondition and ESP creation on disposable VHD
         shell: powershell
