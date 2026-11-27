@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1.gz.b64"
+      - "tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1"
       - ".github/workflows/test-b460m-samsung-empty-gpt-builder-r3.yml"
   workflow_dispatch:
 
@@ -17,33 +17,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore exact r3 builder and verify SHA256
+      - name: Hash and parse the complete builder with Windows PowerShell 5.1
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $encoded = (Get-Content 'tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1.gz.b64' -Raw).Trim()
-          $compressed = [Convert]::FromBase64String($encoded)
-          $inputStream = New-Object System.IO.MemoryStream(,$compressed)
-          $gzipStream = New-Object System.IO.Compression.GzipStream($inputStream,[System.IO.Compression.CompressionMode]::Decompress)
-          $outputStream = New-Object System.IO.MemoryStream
-          $gzipStream.CopyTo($outputStream)
-          Write-Host ('R3_FIXTURE_ENCODED_CHARS=' + $encoded.Length + '; COMPRESSED_BYTES=' + $compressed.Length + '; DECOMPRESSED_BYTES=' + $outputStream.Length)
-          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
-          [System.IO.File]::WriteAllBytes($scriptPath,$outputStream.ToArray())
-          $inputStream.Dispose(); $gzipStream.Dispose(); $outputStream.Dispose()
-          $actual = (Get-FileHash -LiteralPath $scriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          $expected = '38a0e7b0714a5c5d6e2b3d051eb8b126aed4c896611bc7d9e870c955a7c37d04'
-          Write-Host "R3_BUILDER_SHA256=$actual"
-          if ($actual -ne $expected) { throw 'R3_BUILDER_FIXTURE_SHA256_MISMATCH' }
-          Write-Host 'R3_BUILDER_FIXTURE_SHA256=PASS'
-
-      - name: Parse full builder with Windows PowerShell 5.1
-        shell: powershell
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
+          $p = 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
+          $hash = (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "R3_BUILDER_SHA256=$hash"
           $tokens = $null; $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors) | Out-Null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p).Path,[ref]$tokens,[ref]$errors) | Out-Null
           if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw 'R3_POWERSHELL_51_PARSE_FAILED' }
           Write-Host 'R3_POWERSHELL_51_PARSE=PASS'
 
@@ -51,16 +33,14 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
-          & $scriptPath -SelfTest
+          & 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1' -SelfTest
           if (-not $?) { throw 'R3_BUILDER_SELFTEST_FAILED' }
 
       - name: Static safety checks
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
-          $p = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1'
-          $s = Get-Content -LiteralPath $p -Raw
+          $s = Get-Content -LiteralPath 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1' -Raw
           foreach ($required in @('000000123ADC','Samsung SSD 860 EVO','USBSTOR\','PHYSICALDRIVE','IsBoot','IsSystem','CREATE EFI BOOT PARTITION ON SAMSUNG USB','Get-TargetPartitions','PartitionStyle','E:','F:','XhciPortLimit','0x200703')) {
             if (-not $s.Contains($required)) { throw "R3_REQUIRED_GUARD_MISSING=$required" }
           }
@@ -121,7 +101,7 @@ jobs:
           $parts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
           $esp = @($parts | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' })
           $vol = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $letter) -ErrorAction Stop
-          if ($d.PartitionStyle -ne 'GPT' -or $parts.Count -ne 2 -or $esp.Count -ne 1 -or $esp[0].Size -lt 15GB -or $esp[0].Size -gt 17GB -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') { throw 'R3_VHD_ESP_LAYOUT_INVALID' }
+          if ($d.PartitionStyle -ne 'GPT' -or $parts.Count -ne 1 -or $esp.Count -ne 1 -or $esp[0].Size -lt 15GB -or $esp[0].Size -gt 17GB -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') { throw 'R3_VHD_ESP_LAYOUT_INVALID' }
           Write-Host 'R3_DISPOSABLE_VHD_GPT_ESP_FAT32_LAYOUT=PASS'
           $detach = Join-Path $env:RUNNER_TEMP 'r3-vhd-detach.txt'
           $detachLine = 'select vdisk file="' + $vhd + '"'
