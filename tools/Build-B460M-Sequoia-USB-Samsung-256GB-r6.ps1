@@ -362,30 +362,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
         if (-not (Test-Path -LiteralPath $usbRoot -PathType Container)) { Stop-Build ('EXISTING_ESP_DRIVE_LETTER_NOT_ACCESSIBLE=' + $espLetter) }
         Write-Host ('EXISTING_ESP_REUSED=' + $espLetter + ':; DiskPart confirms OC-SEQUOIA FAT32.') -ForegroundColor Green
     } else {
-        $usedLetters = @(Get-CimInstance Win32_LogicalDisk -ErrorAction Stop | ForEach-Object { ([string]$_.DeviceID).TrimEnd(':').ToUpperInvariant() })
-        foreach ($candidate in @('G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z')) {
-            if ($usedLetters -notcontains $candidate) { $espLetter = $candidate; break }
-        }
-        if (-not $espLetter) { Stop-Build 'NO_FREE_DRIVE_LETTER_G_TO_Z; E: remains untouched.' }
-        $dp = Join-Path $work 'create-efi.txt'
-        @("select disk $($targetDisk.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$espLetter",'select partition 1','detail partition','exit') |
-            Set-Content -LiteralPath $dp -Encoding ASCII
-        $dpOut = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
-        $dpOut | ForEach-Object { Write-Host $_ }
-        if ($LASTEXITCODE -ne 0) { Stop-Build ('DISKPART_CREATE_ESP_FAILED=' + $LASTEXITCODE) }
-        $espInfo = Get-EspVolumeInfo $dpOut
-        if (!$espInfo -or $espInfo.Letter -ne $espLetter) { Stop-Build 'DISKPART_CREATED_ESP_VOLUME_IDENTITY_MISMATCH' }
-        $espVolumeNumber = $espInfo.Number
-        if (Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue) { Update-HostStorageCache -ErrorAction SilentlyContinue }
-        Start-Sleep -Seconds 3
-        $finalParts = @(Get-Partition -DiskNumber $targetDisk.Number -ErrorAction Stop)
-        if ($finalParts.Count -ne 1 -or ([string]$finalParts[0].GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or
-            $finalParts[0].Size -lt 15GB -or $finalParts[0].Size -gt 17GB) {
-            Stop-Build 'CREATED_ESP_PARTITION_TYPE_OR_SIZE_VERIFICATION_FAILED'
-        }
-        $espPartition = $finalParts[0]
-        $usbRoot = $espLetter + ':\'
-        if (-not (Test-Path -LiteralPath $usbRoot -PathType Container)) { Stop-Build ('CREATED_ESP_DRIVE_LETTER_NOT_ACCESSIBLE=' + $espLetter) }
+        Stop-Build 'SAFETY_STOP: only the user-prepared EFI partition is supported; no partitioning or formatting is permitted.'
     }
 
     Write-Host 'STEP 4: Copy EFI02 and verified Apple Recovery...'
