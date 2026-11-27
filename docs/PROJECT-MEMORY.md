@@ -355,3 +355,10 @@
 - 输出中的提示行显示确认短语后出现额外的`: RESET_VERIFIED=PASSTARGET_STATE=GPT with zero partitions`文字；r2源代码中实际且唯一接受的确认字符串是：`ERASE SAMSUNG USB 000000123ADC AND CREATE EMPTY GPT`，不含冒号、不含RESET_VERIFIED或TARGET_STATE后缀。判断为用户输入内容与要求不完全一致；无需修改脚本或放宽确认逻辑。
 - 重新核验GitHub Actions：Run 46072752393和Run 46072844033的validate job均completed/success。Run 46072844033在Windows runner一次性VHD完成DiskPart clean、GPT初始化、删除Windows自动创建的隐藏MSR，并验证GPT零分区；这不是用户实体USB测试。
 - 当前下一步：由于本次实体USB没有被修改，用户可在辅助电脑重新运行同一份r2脚本；出现提示后只输入上述一整行确认字符串，不要带引号、冒号、空格前后缀或状态输出文字。运行前脚本会再次核验设备；如果设备信息有任何变化或出现其他错误，立即停止并回传输出。只有脚本输出RESET_VERIFIED=PASS及TARGET_STATE=GPT with zero partitions后，才继续检查builder版本和安装介质制作。不得让用户运行旧版Reset脚本或旧Builder。
+
+
+## 33. 2026-11-28 Samsung USB实体清盘成功，空GPT状态已确认
+- 用户回传Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1完整执行输出。目标设备身份与此前诊断一致：Samsung SSD 860 EVO USB，序列号000000123ADC，Disk 1 / PhysicalDrive1。用户在Read-Host提示后输入完整确认语句，DiskPart实际报告“磁盘 1 现在是所选磁盘。磁盘 1 成功地清除了磁盘。”随后脚本输出`RESET_VERIFIED=PASS`及`TARGET_STATE=GPT with zero partitions`。
+- 这是辅助电脑连接的实体Samsung USB实际清盘结果，不是GitHub CI模拟。该脚本执行了DiskPart clean，随后初始化GPT并移除Windows自动创建的隐藏MSR，最终Get-Disk/MSFT_Partition验证为GPT且零分区。USB上原有全部分区及数据已清除。按脚本保护条件，辅助电脑Windows系统盘Disk 0、其他磁盘及F:未被选中或写入；之前设备核验显示Disk 0为IsBoot/IsSystem，目标为Disk 1且非Boot/System。
+- 用户在提示行后输入的确认文字在终端回显为`...CREATE EMPTY GPT: ERASE SAMSUNG USB ...`，看起来Read-Host提示文本与输入文字连续显示；但实际脚本已接受确认并成功完成写盘，不能再将这次记录为确认失败。
+- 当前下一步：在继续制作安装介质前，重新核验GitHub main上的当前Builder脚本源文件、目标盘前置检查、下载依赖、EFI包及其SHA256，并检查对应Windows PowerShell 5.1 CI。此前历史本地Builder版本存在不同分支/版本（空盘前置版与三分区E:布局版），不可直接假定哪一版适用；必须以仓库当前最新源和空GPT方案为准。确认Builder只要求目标Samsung USB为GPT零分区，并保持型号/序列号/USB总线/容量/CIM PhysicalDrive关联、系统盘及F:保护和二次确认后，再生成/交付PS1。用户当前实体USB已经是GPT零分区，禁止再次运行Reset脚本；也不要运行未经核验的旧Builder。CI/VHD成功不等于Builder已在实体USB执行，更不等于目标机OpenCore启动成功。
