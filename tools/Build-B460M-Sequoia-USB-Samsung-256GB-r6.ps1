@@ -329,7 +329,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
 
     Write-Host ''
     Write-Host ("TARGET: Disk {0} | {1} | Serial {2} | {3:N2} GiB" -f $targetDisk.Number,$targetDisk.FriendlyName,$targetDisk.SerialNumber,($targetDisk.Size/1GB)) -ForegroundColor Yellow
-    Write-Host 'WRITE SCOPE: reuse the existing single 16GB EFI partition when present; otherwise create it. No DiskPart clean.' -ForegroundColor Yellow
+    Write-Host 'WRITE SCOPE: reuse the existing single pre-created EFI partition only. No partitioning, formatting, cleaning, or drive-letter removal.' -ForegroundColor Yellow
     $confirmText = 'BUILD SEQUOIA INSTALLER ON SAMSUNG USB ' + $ExpectedSerial
     $answer = Read-Host ('Type exactly: ' + $confirmText)
     if ($answer -cne $confirmText) { Write-Host 'CANCELLED: no disk changes made.' -ForegroundColor Yellow; exit 2 }
@@ -366,7 +366,7 @@ m.verify_image(sys.argv[2],sys.argv[3])
         foreach ($candidate in @('G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z')) {
             if ($usedLetters -notcontains $candidate) { $espLetter = $candidate; break }
         }
-        if (-not $espLetter) { Stop-Build 'NO_FREE_DRIVE_LETTER_G_TO_Z; E: and F: remain untouched.' }
+        if (-not $espLetter) { Stop-Build 'NO_FREE_DRIVE_LETTER_G_TO_Z; E: remains untouched.' }
         $dp = Join-Path $work 'create-efi.txt'
         @("select disk $($targetDisk.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$espLetter",'select partition 1','detail partition','exit') |
             Set-Content -LiteralPath $dp -Encoding ASCII
