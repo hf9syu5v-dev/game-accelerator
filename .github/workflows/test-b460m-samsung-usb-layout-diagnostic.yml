@@ -1,0 +1,27 @@
+name: Validate read-only Samsung USB layout diagnostic (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Diagnose-B460M-Samsung-USB-Layout-ReadOnly.ps1"
+      - ".github/workflows/test-b460m-samsung-usb-layout-diagnostic.yml"
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse and audit diagnostic script in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'tools/Diagnose-B460M-Samsung-USB-Layout-ReadOnly.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p).Path,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw 'POWERSHELL_51_PARSE_FAILED' }
+          $s = Get-Content -LiteralPath $p -Raw
+          foreach ($required in @('000000123ADC','Get-Disk','Get-Partition','MSFT_Partition','Win32_LogicalDisk','detail disk','list partition','DIAGNOSTIC_COMPLETE=READ_ONLY')) { if (-not $s.Contains($required)) { throw "REQUIRED_DIAGNOSTIC_CHECK_MISSING=$required" } }
+          foreach ($forbidden in @('Clear-Disk','Initialize-Disk','Remove-Partition','Format-Volume','Set-Partition','Add-PartitionAccessPath','Remove-PartitionAccessPath')) { if ($s -match [regex]::Escape($forbidden)) { throw "FORBIDDEN_WRITE_OPERATION_FOUND=$forbidden" } }
+          Write-Host 'POWERSHELL_51_PARSE=PASS'
+          Write-Host 'READ_ONLY_STATIC_AUDIT=PASS'
