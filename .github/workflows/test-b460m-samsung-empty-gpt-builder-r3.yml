@@ -127,6 +127,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
+          . 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1' -SelfTest
           $vhd = Join-Path $env:RUNNER_TEMP 'b460m-r3-layout.vhdx'
           $before = @((Get-Disk | Select-Object -ExpandProperty Number))
           $letter = @('Z','Y','X','W','V','U','T','S','R','Q','P','O','N','M','L','K','J','I','H','G') | Where-Object { -not (Test-Path ($_.ToString() + ':')) } | Select-Object -First 1
@@ -151,13 +152,8 @@ jobs:
           Remove-Partition -DiskNumber $d.Number -PartitionNumber $msr[0].PartitionNumber -Confirm:$false -ErrorAction Stop
           if (Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue) { Update-HostStorageCache -ErrorAction SilentlyContinue }
           Start-Sleep -Seconds 2
-          $emptyParts = @()
-          try { $emptyParts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop) }
-          catch {
-            if ($_.FullyQualifiedErrorId -notlike 'CmdletizationQuery_NotFound_DiskNumber*') { throw }
-          }
-          $allMsft = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
-          $emptyMsft = @($allMsft | Where-Object { [uint32]$_.DiskNumber -eq [uint32]$d.Number })
+          $emptyParts = @(Get-StoragePartitions ([uint32]$d.Number))
+          $emptyMsft = @(Get-TargetPartitions ([uint32]$d.Number))
           $d = Get-Disk -Number $d.Number -ErrorAction Stop
           Write-Host ("R3_VHD_EMPTY_GPT_STYLE={0}; STORAGE_PARTITIONS={1}; MSFT_PARTITIONS={2}" -f $d.PartitionStyle,$emptyParts.Count,$emptyMsft.Count)
           if ($d.PartitionStyle -ne 'GPT' -or $emptyParts.Count -ne 0 -or $emptyMsft.Count -ne 0) { throw 'R3_VHD_EMPTY_GPT_PRECONDITION_FAILED' }
