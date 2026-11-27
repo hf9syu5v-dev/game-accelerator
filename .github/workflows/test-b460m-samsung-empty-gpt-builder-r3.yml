@@ -32,7 +32,7 @@ jobs:
           [System.IO.File]::WriteAllBytes($scriptPath,$outputStream.ToArray())
           $inputStream.Dispose(); $gzipStream.Dispose(); $outputStream.Dispose()
           $actual = (Get-FileHash -LiteralPath $scriptPath -Algorithm SHA256).Hash.ToLowerInvariant()
-          $expected = 'ccede6f1a50debddbfa46a819e97385c8b1c0dab3c03749247e0d0fc42bf3ff8'
+          $expected = '38a0e7b0714a5c5d6e2b3d051eb8b126aed4c896611bc7d9e870c955a7c37d04'
           Write-Host "R3_BUILDER_SHA256=$actual"
           if ($actual -ne $expected) { throw 'R3_BUILDER_FIXTURE_SHA256_MISMATCH' }
           Write-Host 'R3_BUILDER_FIXTURE_SHA256=PASS'
