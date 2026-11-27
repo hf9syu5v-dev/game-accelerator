@@ -1,0 +1,98 @@
+# 黑苹果01项目记忆摘要
+
+更新时间：2026-11-28
+
+> 本文件是新窗口恢复入口。开始工作前先读本文件、核对仓库当前状态和项目历史，再继续。不得把本摘要当作完整35个窗口的逐字备份。
+
+## 资料完整性声明
+用户要求整理前35个窗口。当前会话只获得项目长期指令、部分项目历史摘要/近期对话、可检索的Library文件和GitHub仓库文档，并未获得35个窗口的全部逐字记录。因此本摘要是基于可见资料的可靠浓缩版，不声称已逐字读取全部35个窗口。缺失信息不得猜测；以后若有完整导出，应继续补充并标明来源。
+
+## 1. 项目目标与工作方式
+- 项目：黑苹果01。
+- 目标：ASUS B460M平台安装macOS Sequoia，OpenCore 1.0.8 RELEASE。
+- 简体中文，直接推进、少废话，不重复询问已知信息。
+- 每次新任务先检查项目历史、项目文件、GitHub仓库和已确认决策。
+- 不虚构脚本、文件、构建/测试结果、下载链接或设备识别结果。
+- 用户要求继续时直接推进；只有缺少关键输入或需要用户操作/确认时才暂停。
+- 不擅自推翻已确认的技术决策。
+
+## 2. PowerShell交付规范（强制）
+所有PowerShell脚本必须严格两步法：
+1. 提供完整、真实存在且经过检查的.ps1文件下载链接。
+2. 单独提供执行该.ps1文件的命令。
+禁止把完整脚本作为大段命令让用户复制；禁止将下载和执行合并为一条命令。默认兼容Windows PowerShell 5.1。交付前检查语法、路径、依赖、执行逻辑和安全边界。没有实际创建并验证文件时，不得声称可下载。
+
+## 3. 硬件基准（未经用户确认不得更改）
+- 主板：ASUS TUF GAMING B460M-PLUS（非Wi-Fi版）
+- CPU：i5-10500ES Comet Lake-S G0，6核12线程，CPUID 0x000A0650；不要擅自spoof。
+- 独显：XFX RX570 4GB，Polaris/Ellesmere，PCI 1002:67DF，DP输出。
+- 核显：Intel UHD630，设备ID 8086:9BC8，按既定方案headless。
+- 网卡：Intel I219-V。
+- 声卡：Realtek ALC S1200A，codec 0x0B00。
+- 内存：32GB DDR4。
+- USB：已完成11端口映射，使用UTBMap.kext；不得要求重新映射或替换通用映射。
+- 引导：OpenCore 1.0.8 RELEASE；目标系统macOS Sequoia。
+
+## 4. 已确认BIOS设置
+- VT-d Disabled；Above 4G Decoding Enabled；iGPU Multi-Monitor Enabled；DVMT 512MB。
+- CSM Disabled；Fast Boot Disabled；VT-x Enabled；SATA AHCI；Secure Boot设为Other OS。
+- BIOS中未找到CFG Lock菜单；不得声称已关闭CFG Lock。
+- 后续调整前核对实际设置，不重复要求用户查找已确认不存在的菜单。
+
+## 5. 当前磁盘规划（2026-11-28最新）
+- 256GB移动磁盘：已用分区大师删除所有分区，计划作为OpenCore + macOS Sequoia Recovery启动/安装介质。
+- HP 250GB NVMe：之前安装Windows 10，资料已备份，用户明确允许整盘清空，作为Sequoia系统目标盘。
+- Samsung 860 EVO 250GB：原系统盘；安装期间物理断开SATA数据线，避免安装器误写入。
+- 旧方案中的8GB U盘和128GB SATA硬盘已被新方案取代，不再作为当前方案。
+- 256GB移动盘和HP NVMe的型号、序列号、Windows磁盘编号尚未由用户贴出命令输出确认。禁止猜测编号或执行清盘/分区脚本。
+- 下一步先让用户在Windows PowerShell运行以下只读识别命令并回传输出：
+  Get-Disk | Format-Table Number,FriendlyName,SerialNumber,BusType,PartitionStyle,Size,IsBoot,IsSystem -AutoSize
+  Get-CimInstance Win32_DiskDrive | Format-Table Model,Size,InterfaceType,SerialNumber -AutoSize
+- 确认身份后再规划256GB移动盘GPT/EFI/FAT32布局及文件部署。
+- HP NVMe应在macOS Recovery磁盘工具中选择“显示所有设备”，确认物理设备后整盘抹掉为GUID Partition Map + APFS，卷名Sequoia；不建议Windows预先格式化。
+- 任何格式化、分区、清盘或写EFI操作前，必须确认型号、容量、序列号/设备身份及磁盘编号；破坏性脚本必须有明确目标盘二次确认。
+- 用户明确保护Samsung 860 EVO、E:、F:、F:\com.apple.recovery.boot、F:\com.apple.recovery.boot-SEQUOIA-STAGING，不得触碰。
+
+## 6. EFI与GitHub构建记录
+仓库：https://github.com/hf9syu5v-dev/game-accelerator
+相关分支：main、opencore-1.0.5-sequoia-rx570。
+
+必须区分两份EFI：
+1. EFI01：README链接的“华硕B460黑苹果基准EFI01”，是VESA显示诊断基准。文档docs/华硕B460黑苹果基准EFI01.md位于main分支。它包含-radvesa与-wegnoigpu，用于键盘输入A/B测试；不能据此认定RX570/UHD630完整图形加速已启用。用户反馈此基准实机测试通过。
+2. EFI02：用户后来选定的OpenCore 1.0.8 RELEASE基准EFI包。Actions run 45859349639，artifact ID 15138240431，名称B460M-Baseline-EFI-02-OpenCore-1.0.8，分支opencore-1.0.5-sequoia-rx570，构建提交5f728f133f4583fd46c8068a798f77d68dae505b。曾通过GitHub连接器下载到临时文件引用，但必须重新检查当前ZIP、config.plist和EFI结构后才能部署。不得把EFI01 VESA诊断版误当成EFI02。
+- EFI02早期分析曾提示SMBIOS占位值/ROM为零；必须检查当前artifact实际内容，不可仅凭旧摘要断言。
+- 不把CI构建成功说成实机启动成功。真实硬件启动、图形加速、睡眠、电源管理需分别实测。
+- 修改EFI前先检查原始文件和config.plist；保留原始版本、备份和变更记录。
+- 保留UTBMap.kext的11端口映射。
+- 优先沿用已确认EFI02，不擅自改成诊断EFI01或另建替代方案。
+- 用户曾报告Update-B460M-Baseline-EFI02.ps1停在“Expected exactly one physical Intel I219-V adapter; found 0.”；用户明确不希望再次运行此脚本，不要再建议重复运行。
+- 之前出现过同一artifact哈希陈述不一致/未经实际复核的情况。不得引用未在当前会话真实计算的SHA256。
+- 用户提供过临时测试SMBIOS/MAC/ROM值。不要把序列号、MLB、ROM、UUID、MAC等设备标识写入公开GitHub记忆文件或公开日志；正式三码由用户自行生成替换。
+
+## 7. Windows环境
+- 默认兼容Windows PowerShell 5.1。
+- 用户目录：C:\Users\客厅电脑
+- Python路径曾确认：C:\Program Files\PyManager\python.exe
+- 用户要求脚本必须提供可下载文件，不让其复制长代码。
+- Build-B460M-OC108.ps1曾生成staging目录；脚本说明明确表示不是可启动EFI（缺最终config.plist/ACPI/USB配置等），不得把该staging包说成可启动。
+
+## 8. 近期GitHub Actions历史
+- 用户曾要求在hf9syu5v-dev/game-accelerator上继续多轮Actions构建。
+- 可见历史包含run 45564108710、45564516446、45565073894，以及基准构建run 45859349639。各run当前状态和具体结果必须重新打开Actions核实，不能根据旧聊天猜测。
+- EFI01文档还记录键盘移植测试的多个Actions run，详见main分支docs/华硕B460黑苹果基准EFI01.md。
+- 后续批量运行Actions前先确认workflow、分支、输入参数和前一轮结果，避免无意义重复构建。
+
+## 9. 当前待办与恢复点
+优先顺序：
+1. 获取并核实256GB移动盘与HP 250GB NVMe实际型号、容量、序列号、BusType和Windows磁盘编号（只读识别）。
+2. 检查artifact 15138240431真实内容：EFI目录、OpenCore版本、config.plist、ACPI、Kext、Drivers、UTBMap、SMBIOS占位项、ROM设置；形成检查报告。
+3. 根据实际EFI检查结果，确定256GB移动盘启动/Recovery布局和文件来源。
+4. 制作严格两步法PowerShell脚本：先提供下载文件，再给独立执行命令。脚本先做只读识别/验证；破坏性操作须显式确认，且不得触碰保护盘。
+5. 制作启动盘后，物理断开Samsung 860 EVO，使用HP NVMe安装Sequoia。
+6. 首次安装重启仍从OpenCore启动，直到进入桌面；之后再处理引导安装、正式三码和硬件验收。
+
+## 10. 新窗口快捷恢复指令
+“读取并遵循黑苹果01项目记忆：先读取GitHub仓库docs/PROJECT-MEMORY.md，检查仓库当前状态及相关文件；结合当前项目历史继续执行，不重复询问已知信息。所有PowerShell脚本严格下载/执行两步法；磁盘操作先识别设备身份并设置二次确认。先处理本文件‘当前待办与恢复点’中的最高优先级事项，并在完成实质变更后更新本记忆文件。”
+
+## 11. 历史完整性
+用户提出读取前35个聊天窗口。当前环境未向本次对话提供这35个窗口的全部逐字记录；已综合可见项目长期规范、项目摘要、近期对话片段、Library中可检索脚本和GitHub文档。以后如提供历史窗口完整导出，应补充本摘要并注明证据来源和日期。
