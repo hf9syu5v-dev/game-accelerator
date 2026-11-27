@@ -346,3 +346,12 @@
 - 本地交付文件 `/mnt/data/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1` 已从GitHub main文件内容逐字节恢复核对，Git blob SHA与仓库一致：`9cdb9d0abbd109199c2757755e948153da84fa89`；本地文件SHA-256：`432b7327f00594a1c6c843dae5d4b75ae15b4d8854b4c57e242cd5518f337929`。Windows PowerShell 5.1 Parser与身份SelfTest由Run 46072752393及46072844033验证；空GPT流程由Run 46072844033临时VHD验证。
 - 当前状态：r2脚本已通过Windows PowerShell 5.1 Parser、身份单元测试和临时VHD空GPT端到端测试，可以交付给用户；此前旧版Reset脚本SHA d18e607...已被证实因比较逻辑错误而安全停止，用户不得再次运行旧版。用户辅助电脑实体USB尚未清盘，未输入确认前不应执行任何写盘操作。
 - 下一步：按PowerShell两步法提供r2脚本本地下载文件，再给独立执行命令。用户运行后回传完整输出；只有看到 `RESET_VERIFIED=PASS` 和 `TARGET_STATE=GPT with zero partitions` 后，才继续检查/运行USB builder。不要把CI/VHD测试描述成实体USB清盘或目标机实机启动成功。
+
+
+## 32. 2026-11-28 Reset r2设备核验通过，但用户确认字符串输入不匹配
+- 用户回传辅助电脑实际执行Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1的完整输出。脚本SHA-256为432B7327F00594A1C6C843DAE5D4B75AE15B4D8854B4C57E242CD5518F337929，与已交付r2文件一致。
+- 设备核验成功且唯一匹配：Get-Disk Disk 1 / PhysicalDrive1，FriendlyName Samsung SSD 860 EVO，CIM型号Samsung SSD 860 EVO USB Device，序列号000000123ADC，BusType USB、CIM InterfaceType USB、PNPDeviceID为USBSTOR路径；Get-Disk容量250059350016字节，CIM容量250056737280字节，差值2612736字节（在16MiB容差内）。Disk 0为辅助电脑Windows系统盘，IsBoot=True、IsSystem=True；目标USB IsBoot=False、IsSystem=False。当前目标盘GPT且0分区，E:不在目标盘，F:不在目标盘。
+- r2已打印VERIFIED TARGET DEVICE并通过所有身份/保护检查。随后Read-Host确认文本不匹配，报SAFETY_STOP: Confirmation text did not match.；流程在DiskPart clean之前退出。本次未执行clean、Initialize-Disk、MSR删除或任何分区写入；USB状态没有被脚本改变。
+- 输出中的提示行显示确认短语后出现额外的`: RESET_VERIFIED=PASSTARGET_STATE=GPT with zero partitions`文字；r2源代码中实际且唯一接受的确认字符串是：`ERASE SAMSUNG USB 000000123ADC AND CREATE EMPTY GPT`，不含冒号、不含RESET_VERIFIED或TARGET_STATE后缀。判断为用户输入内容与要求不完全一致；无需修改脚本或放宽确认逻辑。
+- 重新核验GitHub Actions：Run 46072752393和Run 46072844033的validate job均completed/success。Run 46072844033在Windows runner一次性VHD完成DiskPart clean、GPT初始化、删除Windows自动创建的隐藏MSR，并验证GPT零分区；这不是用户实体USB测试。
+- 当前下一步：由于本次实体USB没有被修改，用户可在辅助电脑重新运行同一份r2脚本；出现提示后只输入上述一整行确认字符串，不要带引号、冒号、空格前后缀或状态输出文字。运行前脚本会再次核验设备；如果设备信息有任何变化或出现其他错误，立即停止并回传输出。只有脚本输出RESET_VERIFIED=PASS及TARGET_STATE=GPT with zero partitions后，才继续检查builder版本和安装介质制作。不得让用户运行旧版Reset脚本或旧Builder。
