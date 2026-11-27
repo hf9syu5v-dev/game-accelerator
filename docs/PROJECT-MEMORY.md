@@ -384,3 +384,13 @@
 - 最新完整CI Run `46076723645`，Windows Server 2022 / Windows PowerShell 5.1，所有步骤completed/success。日志明确包含：`R3_BUILDER_SHA256=5cee5be566873c1374df976ed15499c8d0786ae47a8bf8c627d6745db52bd01c`、`R3_POWERSHELL_51_PARSE=PASS`、`BUILDER_SELFTEST=PASS`、`R3_STATIC_SAFETY_CHECKS=PASS`、`EFI02_CONFIG_PATCH_AND_11_PORT_UTBMAP=PASS`、`EFI02_SEQUOIA_BOOT_SETTINGS_PATCH=PASS`、`UTBMAP_PORTS=11`、`PRODUCTION_BUILDER_UTBMAP_PATH_RESOLUTION=PASS`、`MACRECOVERY_VERIFY_IMAGE_API=PASS`、`R3_EMPTY_GPT_ZERO_PARTITIONS=PASS`、`R3_DISPOSABLE_VHD_GPT_ESP_FAT32_LAYOUT=PASS`。VHD为CI临时盘，不是用户实体USB。
 - Run `46076723645`上传精确测试源码artifact `15234911977`，下载后解压得到本地交付文件 `/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1`，大小25614字节，SHA-256 `5cee5be566873c1374df976ed15499c8d0786ae47a8bf8c627d6745db52bd01c`，与Windows CI计算值完全一致。Artifact ZIP SHA-256 `3fdcdc1f5337b3cfb403916af6af9ccbee5ec62f90959cf274b815f046d12968`。
 - 当前恢复点：交付修复版r3给用户，严格两步法（下载.ps1，再单独执行命令）。用户再次运行时，脚本应完成EFI02下载校验、配置补丁及UTBMap路径校验，然后再下载并验证Apple Recovery。任何未出现最终确认提示的失败都不会写USB。若出现确认提示，用户需在确认前核对仍是Disk 1 / Samsung SSD 860 EVO / Serial 000000123ADC，并输入精确确认语句。脚本成功后再核验实体USB分区布局和EFI/Recovery文件。不得再次清盘。
+
+
+## 36. 2026-11-28 Builder r3已创建ESP，但布局复核失败；新增只读诊断
+- 用户执行已修复UTBMap路径的Builder r3后，Apple Recovery下载第一次遇到WinError 10054，脚本自动重试后完整下载843.4MB BaseSystem.dmg；chunklist校验两次通过，输出APPLE_RECOVERY_CHUNKLIST_VERIFICATION=PASS。
+- 用户输入最终确认语句后，DiskPart在目标Samsung SSD 860 EVO USB（序列号000000123ADC，原Disk 1）上成功创建EFI分区、FAT32快速格式化并分配盘符。随后Builder在首次布局检查报CREATED_ESP_LAYOUT_VERIFICATION_FAILED。故实体USB已不再是空GPT；严禁重新运行原Builder、清盘、格式化或删除分区。
+- 当前尚不能断言具体失败字段。生产脚本检查条件为：Get-Partition返回分区总数必须为1；其中一个分区GptType必须为EFI System Partition GUID c12a7328-f81f-11d2-ba4b-00a0c93ec93b、DriveLetter等于分配盘符、Size在15–17GB；Win32_LogicalDisk对应盘符卷必须FileSystem=FAT32且VolumeName=OC-SEQUOIA。用户输出未显示这些字段，需实体只读诊断后定位。
+- 新增只读脚本 tools/Diagnose-B460M-Samsung-USB-Layout-ReadOnly.ps1，GitHub提交 82b8d28ac7c79e924680aac1a75326cd0bf5369e；脚本仅核对精确序列号/型号/USB总线，读取Get-Disk、Win32_DiskDrive、Get-Partition、MSFT_Partition、Win32_LogicalDisk、Win32_Volume，并运行DiskPart detail disk/list partition只读命令，不执行任何磁盘写入。
+- 新增Windows Server 2022 / Windows PowerShell 5.1 CI：.github/workflows/test-b460m-samsung-usb-layout-diagnostic.yml，提交 a583f20202c4a18e7f57415c1bab4e4e33fe21fc；Run 46077646593 completed/success，PowerShell 5.1解析和只读静态审计通过。此CI不代表用户实体盘测试。
+- 本地交付脚本 /mnt/data/Diagnose-B460M-Samsung-USB-Layout-ReadOnly.ps1，SHA-256 c198503753ffa595780aadea6edaa529a8d70c616585d53e13f70e5216a20224。
+- 当前恢复点：用户下载并运行上述只读诊断脚本，回传完整输出。确认目标仍为Samsung SSD 860 EVO USB / serial 000000123ADC；不对任何分区做修改。根据实际分区GUID、大小、盘符、卷文件系统和标签修复Builder验证/复制流程。Recovery临时文件在脚本工作目录，脚本退出后可能已被保留或清理，不能假设仍在。
