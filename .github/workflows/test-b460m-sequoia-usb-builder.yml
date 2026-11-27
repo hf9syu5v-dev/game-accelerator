@@ -37,6 +37,7 @@ jobs:
           $builderText = $builderText.Replace('$partition = Get-Partition -DriveLetter $availableLetter -ErrorAction Stop', '')
           $builderText = $builderText.Replace('if ($partition.DiskNumber -ne $targetAgain.Number -or ([string]$partition.GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid -or $volume.FileSystem -ne ''FAT32'' -or $volume.FileSystemLabel -ne ''OC-SEQUOIA'') {', 'if ($createdPartitions.Count -ne 1 -or $espMatches.Count -ne 1 -or ([string]$espMatches[0].GptType).Trim(''{}'').ToLowerInvariant() -ne $EspGuid -or !$volume -or $volume.FileSystem -ne ''FAT32'' -or $volume.VolumeName -ne ''OC-SEQUOIA'') {')
           $builderText = $builderText.Replace('Write-Verbose $_','Write-Host $_')
+          $builderText = $builderText.Replace("    Invoke-VirtualDiskLayoutSelfTest", "    Remove-Item Function:\\Get-CimInstance -ErrorAction Stop`r`n    Invoke-VirtualDiskLayoutSelfTest")
           [System.IO.File]::WriteAllText($scriptPath,$builderText,(New-Object System.Text.UTF8Encoding($false)))
           if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
           Write-Host "BUILDER_FIXTURE_RESTORED=$scriptPath"
