@@ -1,0 +1,53 @@
+name: Validate Samsung Sequoia USB builder (Windows PowerShell 5.1)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB.ps1.gz.b64"
+      - ".github/workflows/test-b460m-sequoia-usb-builder.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  powershell-51-builder-validation:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore exact local builder fixture
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $encoded = (Get-Content 'tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB.ps1.gz.b64' -Raw).Trim()
+          $compressed = [Convert]::FromBase64String($encoded)
+          $input = New-Object System.IO.MemoryStream(,$compressed)
+          $gzip = New-Object System.IO.Compression.GzipStream($input,[System.IO.Compression.CompressionMode]::Decompress)
+          $output = New-Object System.IO.MemoryStream
+          $gzip.CopyTo($output)
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
+          [System.IO.File]::WriteAllBytes($scriptPath,$output.ToArray())
+          $input.Dispose(); $gzip.Dispose(); $output.Dispose()
+          if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
+          Write-Host "BUILDER_FIXTURE_RESTORED=$scriptPath"
+      - name: Parse complete builder with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Host
+            throw 'FULL_BUILDER_POWERSHELL_51_PARSE_FAILED'
+          }
+          Write-Host 'FULL_BUILDER_POWERSHELL_51_PARSE=PASS'
+      - name: Run isolated builder self-tests (no physical disk access)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
+          & $scriptPath -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw "BUILDER_SELFTEST_EXIT=$LASTEXITCODE" }
