@@ -1,0 +1,93 @@
+name: Validate Samsung USB Sequoia builder r7 (Windows PowerShell 5.1)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1"
+      - ".github/workflows/test-b460m-samsung-usb-builder-r7.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse builder with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1'
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p).Path,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count) { $errors | Format-List | Out-String | Write-Host; throw 'R7_POWERSHELL_51_PARSE_FAILED' }
+          Write-Host 'R7_POWERSHELL_51_PARSE=PASS'
+          Write-Host ('R7_SHA256=' + (Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant())
+      - name: Run identity and F drive parser self-tests
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1' -SelfTest
+          if (-not $?) { throw 'R7_SELFTEST_FAILED' }
+          Write-Host 'R7_SELFTEST=PASS'
+      - name: Static non-destructive safety audit
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $s = Get-Content 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1' -Raw
+          foreach ($x in @('000000123ADC','USBSTOR','PHYSICALDRIVE','IsBoot','IsSystem','WRITE_AUTHORIZATION=USER_APPROVED_IN_CHAT','Get-EspVolumeInfo','E:','F:','TARGET_ESP_DRIVE_LETTER=PRESERVED','XhciPortLimit','0x200703')) {
+            if (-not $s.Contains($x)) { throw "R7_REQUIRED_GUARD_MISSING=$x" }
+          }
+          if ($s -match "(?m)^\s*'clean'\\s*,?\\s*$") { throw 'R7_MUST_NOT_DISKPART_CLEAN' }
+          if ($s -match '(?m)^\\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\b') { throw 'R7_UNEXPECTED_DESTRUCTIVE_CMDLET' }
+          if ($s -match 'Get-Partition\\s+-DriveLetter\\s+F') { throw 'R7_MUST_ALLOW_TARGET_F_DRIVE' }
+          if ($s -match 'mountvol\\.exe') { throw 'R7_MUST_PRESERVE_F_DRIVE_LETTER' }
+          if ($s -match '(?i)create partition efi|format fs=fat32') { throw 'R7_MUST_NOT_PARTITION_OR_FORMAT' }
+          if ($s -match 'Read-Host|BUILD SEQUOIA INSTALLER ON SAMSUNG USB') { throw 'R7_CONFIRMATION_PROMPT_MUST_BE_REMOVED' }
+          if (-not $s.Contains('expected exactly one pre-created 15-17GB EFI partition')) { throw 'R7_PREPARED_ESP_REQUIRED' }
+          Write-Host 'R7_STATIC_SAFETY_AUDIT=PASS'
+      - name: Exercise existing ESP reuse and preserve F on disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1' -SelfTest
+          $vhd = Join-Path $env:RUNNER_TEMP 'b460m-r7-existing-esp.vhdx'
+          $before = @((Get-Disk | Select-Object -ExpandProperty Number))
+          if (Test-Path 'F:\') { throw 'R7_F_DRIVE_ALREADY_IN_USE_ON_RUNNER' }
+          $create = Join-Path $env:RUNNER_TEMP 'r7-vhd-create.txt'
+          @"
+          create vdisk file="$vhd" maximum=32768 type=expandable
+          select vdisk file="$vhd"
+          attach vdisk
+          exit
+          "@ | Set-Content -LiteralPath $create -Encoding ASCII
+          & diskpart.exe /s $create
+          if ($LASTEXITCODE -ne 0) { throw 'R7_VHD_CREATE_FAILED' }
+          $new = @(Get-Disk | Where-Object { $_.Number -notin $before })
+          if ($new.Count -ne 1) { throw "R7_EXPECTED_ONE_VHD=$($new.Count)" }
+          $d = $new[0]
+          Initialize-Disk -Number $d.Number -PartitionStyle GPT -ErrorAction Stop | Out-Null
+          $msr = @(Get-Partition -DiskNumber $d.Number | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'e3c9e316-0b5c-4db8-817d-f92df00215ae' })
+          if ($msr.Count -ne 1) { throw 'R7_VHD_MSR_NOT_FOUND' }
+          Remove-Partition -DiskNumber $d.Number -PartitionNumber $msr[0].PartitionNumber -Confirm:$false
+          $dp = Join-Path $env:RUNNER_TEMP 'r7-vhd-esp.txt'
+          @("select disk $($d.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA','assign letter=F','select partition 1','detail partition','exit') | Set-Content -LiteralPath $dp -Encoding ASCII
+          $out = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
+          if ($LASTEXITCODE -ne 0) { throw 'R7_VHD_ESP_CREATE_FAILED' }
+          $info = Get-EspVolumeInfo $out
+          if (($null -eq $info) -or $info.Letter -ne 'F') { $out | Write-Host; throw 'R7_F_VOLUME_PARSE_FAILED' }
+          if (-not (Test-Path 'F:\\' -PathType Container)) { throw 'R7_F_DRIVE_NOT_ACCESSIBLE' }
+          Set-Content -LiteralPath 'F:\\R7-TEST.txt' -Value 'copy-access-pass'
+          if (-not (Test-Path 'F:\\R7-TEST.txt')) { throw 'R7_F_COPY_ACCESS_FAILED' }
+          if (-not (Test-Path 'F:\\' -PathType Container)) { throw 'R7_F_DRIVE_NOT_PRESERVED' }
+          Write-Host 'R7_EXISTING_ESP_F_DRIVE_ACCESS_AND_PRESERVATION=PASS'
+          & mountvol.exe F: /D
+          Dismount-DiskImage -ImagePath $vhd -ErrorAction Stop
+          Remove-Item -LiteralPath $vhd -Force
+      - name: Publish exact tested r7 source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: B460M-Samsung-USB-Builder-r7-source
+          path: tools/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1
+          if-no-files-found: error
