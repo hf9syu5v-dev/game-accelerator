@@ -285,3 +285,12 @@
 - 最终本地交付文件重新核验：PS1 /mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1，23,854 bytes，SHA-256 7d7fdc1bfdaccac035dcd3795a09779964121ec953290d36ec9818637b442b52；EFI ZIP /mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip，4,637,288 bytes，SHA-256 e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680。EFI ZIP完整性PASS，60条目，关键启动路径存在。
 - 本地静态安全检查PASS：不再使用MSFT_Partition WQL Filter；不再使用Get-Partition -DiskNumber；动态识别Samsung SSD 860 EVO USB、按序列号交叉核对、排除IsBoot/IsSystem、保护E:/F:、精确确认后才调用DiskPart clean等逻辑保留。
 - 当前允许重新交付该修复版PS1，但用户必须先下载新文件覆盖旧版本，且将EFI ZIP与PS1放在Downloads同一目录；运行时仍先只读识别、确认USB型号/容量/序列号，未输入精确确认语句前不写盘。不得声称实体USB已经制作成功。
+
+
+## 26. 2026-11-28 USB脚本第三次安全停止：检测到3个分区
+- 用户再次运行本地修复版Build-B460M-Sequoia-USB-Samsung-256GB.ps1，输出：`SAFETY_STOP: target USB currently has 3 partition(s). The confirmed preparation state was an empty GPT disk; no changes made.`
+- 此停止发生在正式写盘确认之前，脚本检测到目标USB存在3个MSFT_Partition对象后立即停止；未执行DiskPart clean、convert、create partition、format或assign。当前不能据此推断三个分区的类型/内容，必须先读取实际分区号、GPT类型GUID、大小、偏移、盘符、卷标、文件系统及隐藏属性。
+- 本轮确认用户实际上传并运行的PS1与本地修复版相同：23,854 bytes，SHA-256 `7d7fdc1bfdaccac035dcd3795a09779964121ec953290d36ec9818637b442b52`。脚本第221行逻辑明确要求目标盘当前分区数为0，否则停止；这是预期fail-closed行为。
+- 当前不能假定目标USB是空盘。历史记忆中曾记载用户使用分区工具删除分区，但本次实测报告3个分区，说明之前“空盘”状态没有得到当前设备事实确认，或者后来分区表状态不同。不要建议用户手动删除分区、运行diskpart clean或修改分区。
+- 已生成只读诊断脚本 `/mnt/data/Diagnose-B460M-Samsung-USB-Partitions.ps1`，大小5,592 bytes，SHA-256 `7c3ea6ae40fa1ced4a06d75d5e430f9882b63678a215c82b0cbe85a2ed8addb4`。它按已确认Samsung SSD 860 EVO USB型号前缀、序列号000000123ADC、USB BusType和225–240GiB范围识别目标盘，并输出Get-Disk/Win32_DiskDrive交叉信息、无Filter枚举MSFT_Partition结果、Get-Partition交叉结果及卷信息；无任何清盘、分区、格式化、分配盘符或文件写入命令。仅做静态括号/语法结构粗检，当前环境无Windows PowerShell 5.1解释器，不能声称已在Windows执行Parser测试。
+- 下一步：用户下载该只读诊断PS1至辅助电脑Downloads目录，以管理员Windows PowerShell 5.1单独运行并回传完整输出。根据3个分区的GPT GUID/大小/偏移/卷信息判断是否为残留ESP/MSR/恢复分区或其他数据。只有完成设备身份和分区内容核验后，才决定是否更新builder允许安全地清除已确认目标USB的既有分区；仍需型号、容量、序列号核验及精确二次确认。Disk 0系统盘、E:/F:、HP NVMe及目标机SATA原系统盘保护规则不变。
