@@ -17,6 +17,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Confirm the legacy Builder source version and SHA256
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $encoded = (Get-Content 'tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB.ps1.gz.b64' -Raw).Trim()
+          $compressed = [Convert]::FromBase64String($encoded)
+          $legacyInput = New-Object System.IO.MemoryStream(,$compressed)
+          $legacyGzip = New-Object System.IO.Compression.GzipStream($legacyInput,[System.IO.Compression.CompressionMode]::Decompress)
+          $legacyOutput = New-Object System.IO.MemoryStream
+          $legacyGzip.CopyTo($legacyOutput)
+          $legacyPath = Join-Path $env:RUNNER_TEMP 'legacy-builder.ps1'
+          [IO.File]::WriteAllBytes($legacyPath,$legacyOutput.ToArray())
+          $legacyInput.Dispose(); $legacyGzip.Dispose(); $legacyOutput.Dispose()
+          $legacyHash = (Get-FileHash -LiteralPath $legacyPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "LEGACY_BUILDER_SHA256=$legacyHash"
+          if ($legacyHash -ne '415ce293bcc536a1bef3742460b62e5f73bde56564b336b1fc18ddd807277fd6') { throw 'LEGACY_BUILDER_SHA256_MISMATCH' }
+          Write-Host 'LEGACY_BUILDER_VERSION=three-partition-layout; SHA256=PASS'
+
       - name: Hash and parse the complete builder with Windows PowerShell 5.1
         shell: powershell
         run: |
@@ -105,7 +123,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'EFI02_CONFIG_PATCH_TEST_FAILED' }
           Write-Host 'EFI02_RELEASE_ASSET_MANIFEST_OPENCORE_AND_CONFIG_CHECKS=PASS'
 
-      - name: Exercise GPT EFI partition layout on disposable VHD
+      - name: Exercise empty-GPT precondition and ESP creation on disposable VHD
         shell: powershell
         run: |
           $ErrorActionPreference = 'Stop'
@@ -113,26 +131,38 @@ jobs:
           $before = @((Get-Disk | Select-Object -ExpandProperty Number))
           $letter = @('Z','Y','X','W','V','U','T','S','R','Q','P','O','N','M','L','K','J','I','H','G') | Where-Object { -not (Test-Path ($_.ToString() + ':')) } | Select-Object -First 1
           if (-not $letter) { throw 'NO_TEST_DRIVE_LETTER' }
-          $dp = Join-Path $env:RUNNER_TEMP 'r3-vhd-layout.txt'
+          $create = Join-Path $env:RUNNER_TEMP 'r3-vhd-create.txt'
           @"
           create vdisk file="$vhd" maximum=32768 type=expandable
           select vdisk file="$vhd"
           attach vdisk
-          convert gpt
-          create partition efi size=16000
-          format fs=fat32 quick label=OC-SEQUOIA
-          assign letter=$letter
           exit
-          "@ | Set-Content -LiteralPath $dp -Encoding ASCII
-          & diskpart.exe /s $dp
-          if ($LASTEXITCODE -ne 0) { throw 'R3_VHD_DISKPART_FAILED' }
+          "@ | Set-Content -LiteralPath $create -Encoding ASCII
+          & diskpart.exe /s $create
+          if ($LASTEXITCODE -ne 0) { throw 'R3_VHD_CREATE_ATTACH_FAILED' }
           $new = @(Get-Disk | Where-Object { $_.Number -notin $before })
           if ($new.Count -ne 1) { throw "R3_EXPECTED_ONE_VHD=$($new.Count)" }
           $d = $new[0]
+          Initialize-Disk -Number $d.Number -PartitionStyle GPT -ErrorAction Stop | Out-Null
+          $msrGuid = 'e3c9e316-0b5c-4db8-817d-f92df00215ae'
+          $msr = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq $msrGuid })
+          if ($msr.Count -ne 1) { throw "R3_VHD_MSR_COUNT=$($msr.Count)" }
+          Remove-Partition -DiskNumber $d.Number -PartitionNumber $msr[0].PartitionNumber -Confirm:$false -ErrorAction Stop
+          if (Get-Command Update-HostStorageCache -ErrorAction SilentlyContinue) { Update-HostStorageCache -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 2
+          $emptyParts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
+          $allMsft = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
+          $emptyMsft = @($allMsft | Where-Object { [uint32]$_.DiskNumber -eq [uint32]$d.Number })
+          if ($d.PartitionStyle -ne 'GPT' -or $emptyParts.Count -ne 0 -or $emptyMsft.Count -ne 0) { throw 'R3_VHD_EMPTY_GPT_PRECONDITION_FAILED' }
+          Write-Host 'R3_EMPTY_GPT_ZERO_PARTITIONS=PASS'
+          $createEsp = Join-Path $env:RUNNER_TEMP 'r3-vhd-esp.txt'
+          @("select disk $($d.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$letter",'exit') | Set-Content -LiteralPath $createEsp -Encoding ASCII
+          & diskpart.exe /s $createEsp
+          if ($LASTEXITCODE -ne 0) { throw 'R3_VHD_ESP_DISKPART_FAILED' }
           $parts = @(Get-Partition -DiskNumber $d.Number -ErrorAction Stop)
           $esp = @($parts | Where-Object { ([string]$_.GptType).Trim('{}').ToLowerInvariant() -eq 'c12a7328-f81f-11d2-ba4b-00a0c93ec93b' })
           $vol = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $letter) -ErrorAction Stop
-          if ($d.PartitionStyle -ne 'GPT' -or $parts.Count -ne 1 -or $esp.Count -ne 1 -or $esp[0].Size -lt 15GB -or $esp[0].Size -gt 17GB -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') { throw 'R3_VHD_ESP_LAYOUT_INVALID' }
+          if ($parts.Count -ne 1 -or $esp.Count -ne 1 -or $esp[0].Size -lt 15GB -or $esp[0].Size -gt 17GB -or $vol.FileSystem -ne 'FAT32' -or $vol.VolumeName -ne 'OC-SEQUOIA') { throw 'R3_VHD_ESP_LAYOUT_INVALID' }
           Write-Host 'R3_DISPOSABLE_VHD_GPT_ESP_FAT32_LAYOUT=PASS'
           $detach = Join-Path $env:RUNNER_TEMP 'r3-vhd-detach.txt'
           $detachLine = 'select vdisk file="' + $vhd + '"'
