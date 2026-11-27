@@ -30,8 +30,10 @@ try {
  $againC=@(Get-CimInstance Win32_DiskDrive -ErrorAction Stop|Where-Object{([string]$_.SerialNumber).Trim() -eq $serial -and ([string]$_.Model).Trim() -like "$model*" -and [int64]$_.Size -eq [int64]$t.Size})
  if($again.Count -ne 1 -or $againC.Count -ne 1){Stop-Safely 'Identity changed before write. No changes made.'}
  $dp=Join-Path $env:TEMP ('B460M-reset-'+[guid]::NewGuid().ToString('N')+'.txt')
- @("select disk $n",'clean','convert gpt','exit')|Set-Content -LiteralPath $dp -Encoding ASCII
+ @("select disk $n",'clean','exit')|Set-Content -LiteralPath $dp -Encoding ASCII
  try{$o=& diskpart.exe /s $dp 2>&1;$ec=$LASTEXITCODE;$o|ForEach-Object{Write-Host $_};if($ec -ne 0){Stop-Safely "DiskPart exit $ec. Inspect disk before retry."}}finally{Remove-Item $dp -Force -ErrorAction SilentlyContinue}
+ Update-HostStorageCache -ErrorAction SilentlyContinue
+ Initialize-Disk -Number $n -PartitionStyle GPT -ErrorAction Stop | Out-Null
  Update-HostStorageCache -ErrorAction SilentlyContinue; Start-Sleep 2
  $after=Get-Disk -Number $n -ErrorAction Stop
  $ap=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition -ErrorAction Stop|Where-Object{[int]$_.DiskNumber -eq $n})
