@@ -6,6 +6,7 @@ on:
     paths:
       - "tests/powershell/fixtures/Build-B460M-Sequoia-USB-Samsung-256GB.ps1.gz.b64"
       - ".github/workflows/test-b460m-sequoia-usb-builder.yml"
+      - "tools/Check-B460M-Builder-Version.ps1"
   workflow_dispatch:
 
 permissions:
@@ -16,6 +17,19 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+      - name: Parse read-only version checker with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $scriptPath = 'tools/Check-B460M-Builder-Version.ps1'
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($scriptPath,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | Format-List | Out-String | Write-Host
+            throw 'VERSION_CHECKER_POWERSHELL_51_PARSE_FAILED'
+          }
+          Write-Host 'VERSION_CHECKER_POWERSHELL_51_PARSE=PASS'
       - name: Restore exact builder fixture
         shell: powershell
         run: |
