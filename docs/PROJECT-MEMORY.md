@@ -244,3 +244,13 @@
 - 因此目前可以确认：完整脚本在Windows PowerShell 5.1 Parser测试通过；Get-TargetPartitions模拟回归通过；DiskPart在CI临时VHD上执行GPT/EFI/FAT32命令成功，但VHD分区身份/ESP类型复核尚未通过。完整脚本端到端虚拟磁盘验证仍未通过，禁止向用户发布该脚本作为可执行正式版本，禁止用户再次运行，也不得对辅助电脑Disk 1进行任何手动写盘操作。
 - 本地脚本和EFI ZIP仅在当前容器路径存在；正式交付前须重新核验文件存在、哈希、PowerShell 5.1 Parser、VHDX ESP验证和GitHub Actions全绿。不得声称目标USB已制作或目标电脑已启动。
 - 关于“继续黑苹果项目分析 (37)”：当前环境仍未获得该窗口正文/导出；本轮仅追加本窗口和可验证GitHub/CI记录，不编造第37窗口内容。
+
+
+## 22. 2026-11-28 EFI分区核验根因修复与CI虚拟磁盘通过
+- 根因已通过Windows Server 2022真实DiskPart + VHDX测试查明：DiskPart在GPT空盘执行`create partition efi size=...`时，自动创建MSR（GPT type `e3c9e316-0b5c-4db8-817d-f92df00215ae`）及EFI System Partition（GPT type `c12a7328-f81f-11d2-ba4b-00a0c93ec93b`）两个分区。MSR为隐藏保留分区；EFI分区虽通过DiskPart分配盘符并能从Win32_LogicalDisk读取FAT32卷，但MSFT_Partition/Get-Partition对象的DriveLetter字段仍为空。因此不能用Get-Partition -DriveLetter筛选ESP，也不能把DiskPart建盘结果错误地断言为只有一个分区。
+- 正确布局核验：要求该目标盘总计2个分区，按GptType分别找到且仅找到1个ESP和1个MSR；通过Win32_LogicalDisk按盘符核验文件系统FAT32、卷标OC-SEQUOIA。该验证不依赖ESP的DriveLetter字段。
+- 已修订本地脚本：/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1；SHA-256 `6e82387cad40be715bbad79f316aded0f39093f1eea48b8f33022808028482aa`。已修正VHD自测逻辑和写盘后的实际USB布局验证逻辑，检查ESP+MSR两个GPT分区及FAT32卷；保留目标设备型号/USB总线/容量/序列号二次核验、IsBoot/IsSystem保护、E:/F:排除、精确确认语句、写盘前复核及文件哈希校验。该脚本不包含真实磁盘序列号或SMBIOS值。
+- Windows PowerShell 5.1 / GitHub Actions workflow `.github/workflows/test-b460m-sequoia-usb-builder.yml`最新通过记录：Run `46067207584`，commit `c353cfcd6eccdb79b6f76dc401a47886255aaeba`，结论success。Job各步骤均success：Windows PowerShell 5.1完整脚本fixture解析、空盘/非空盘/CIM provider异常模拟自测、DiskPart在新建临时VHDX上创建GPT/EFI/FAT32布局并核验ESP+MSR+卷标。VHD在GitHub runner上创建，未操作runner物理系统盘或用户实体磁盘。
+- 该CI通过的是fixture恢复后应用同一ESP/MSR核验修复的脚本测试，以及独立VHD端到端DiskPart测试；并非对用户辅助电脑的Samsung USB实盘写入测试。不得声称用户USB已经制作完成或黑苹果实机启动成功。
+- 当前本地EFI包：/mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip，SHA-256 `e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680`。包含此前确认的EFI02配置及用户批准的临时测试SMBIOS；严禁提交到公开GitHub或把实际三码写入项目记忆。
+- 下一步：重新核验两个本地交付文件的存在及哈希，发布PS1与EFI ZIP下载；用户下载到辅助电脑Downloads目录后，才可按两步法运行。运行时先观察设备型号、容量、USB总线、序列号及分区识别输出，确认目标为已批准的Samsung USB后再键入脚本要求的精确确认语句。Disk 0、E:/F:、HP NVMe和目标机SATA原系统盘保护规则不变。
