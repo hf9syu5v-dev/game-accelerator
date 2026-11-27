@@ -32,22 +32,22 @@ jobs:
           if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
           $builderText = Get-Content -LiteralPath $scriptPath -Raw
           $newPartitionFunction = @'
-function Get-TargetPartitions {
-    [CmdletBinding()]
-    param([Parameter(Mandatory=$true)][uint32]$DiskNumber)
-    try {
-        # Avoid provider-side WQL filter failures for empty disks.
-        $allPartitions = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
-        $found = @($allPartitions | Where-Object {
-            $null -ne $_.DiskNumber -and [uint32]$_.DiskNumber -eq $DiskNumber
-        })
-        return $found
-    }
-    catch {
-        throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber, $_.Exception.Message)
-    }
-}
-'@
+          function Get-TargetPartitions {
+              [CmdletBinding()]
+              param([Parameter(Mandatory=$true)][uint32]$DiskNumber)
+              try {
+                  # Avoid provider-side WQL filter failures for empty disks.
+                  $allPartitions = @(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName 'MSFT_Partition' -ErrorAction Stop)
+                  $found = @($allPartitions | Where-Object {
+                      $null -ne $_.DiskNumber -and [uint32]$_.DiskNumber -eq $DiskNumber
+                  })
+                  return $found
+              }
+              catch {
+                  throw ('PARTITION_QUERY_FAILED for disk {0}: {1}' -f $DiskNumber, $_.Exception.Message)
+              }
+          }
+          '@
           $partitionFunctionPattern = '(?s)function Get-TargetPartitions \{.*?\r?\n\}\r?\n\r?\nfunction Test-TargetDiskIdentity \{'
           $partitionFunctionReplacement = $newPartitionFunction + "`r`n`r`nfunction Test-TargetDiskIdentity {"
           $builderText = [regex]::Replace($builderText,$partitionFunctionPattern,$partitionFunctionReplacement,1)
