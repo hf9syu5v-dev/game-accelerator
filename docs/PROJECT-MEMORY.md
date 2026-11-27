@@ -96,3 +96,20 @@
 
 ## 11. 历史完整性
 用户提出读取前35个聊天窗口。当前环境未向本次对话提供这35个窗口的全部逐字记录；已综合可见项目长期规范、项目摘要、近期对话片段、Library中可检索脚本和GitHub文档。以后如提供历史窗口完整导出，应补充本摘要并注明证据来源和日期。
+
+
+## 12. 2026-11-28 EFI02 artifact实物检查结果
+已重新下载并检查Actions artifact 15138240431（名称B460M-Baseline-EFI-02-OpenCore-1.0.8.zip）：
+- 外层ZIP SHA-256：e28d7fc6aa3096d01266b94db15255de62aad9c7e3ff39bc7b44f07cff409bcc
+- 内层EFI ZIP SHA-256：baab37149a72b7a373adb92c6b575523bb97d57780cefb04f7ac9e7e2ad08271
+- 内层包含107个ZIP条目；EFI-SHA256SUMS.txt列出的60项逐项核对通过，无缺失、无哈希不匹配。
+- BUILD-REPORT.txt确认OpenCore 1.0.8 RELEASE、Sequoia目标；参考配置来源为Stick-Study/ASUS-TUF-GAMING-B460M-HACKINTOSH，固定提交f038b267ba00b862ea5c5cc289239286bbf9df66。
+- 报告明确声明：此包配置校验/构建完成，但没有在目标PC实机启动测试。
+- SMBIOS仍是公开占位符：SystemProductName iMac20,1，SystemSerialNumber和MLB为REPLACE_LOCALLY，SystemUUID全零，ROM六字节全零。未将任何用户真实/临时三码写入本记忆。
+- Kernel/Add中Lilu、VirtualSMC、SMCProcessor、SMCSuperIO、WhateverGreen、AppleALC、IntelMausi、NVMeFix、RestrictEvents、USBToolBox、UTBMap、XHCI-unsupported均Enabled；USBInjectAll和USBPorts均Disabled。UTBMap已保留。
+- ACPI启用SSDT-EC-USBX、SSDT-PLUG、SSDT-AWAC、SSDT-PMCR、SSDT-RHUB；DMAR删除项当前Disabled。
+- UEFI Drivers启用HfsPlus、OpenRuntime、ResetNvramEntry、ToggleSipEntry；OpenCanopy Disabled。
+- 当前boot-args为-v keepsyms=1 debug=0x100。
+- UHD630属性为AAPL,ig-platform-id 0300913E（headless配置）；音频layout-id 1；没有看到RX570独显注入属性，需结合完整config和实机显示输出验证，不应据此宣称GPU加速。
+- 发现Kernel Quirks中的XhciPortLimit为True。此项需在最终部署前结合Sequoia兼容性及已完成UTBMap的配置审查，不要未经验证直接改动。
+- 当前结论：EFI02是完整的配置基准包，但不能原样直接写盘作为最终可用EFI；至少必须先填入有效的本机SMBIOS标识，并审查上述配置项。部署前仍需校验config.plist与OpenCore 1.0.8 ocvalidate。
