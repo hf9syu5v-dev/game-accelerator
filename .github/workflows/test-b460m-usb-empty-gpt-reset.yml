@@ -22,7 +22,7 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile($p,[ref]$tokens,[ref]$errors)|Out-Null
           if($errors.Count){$errors|Format-List|Out-String|Write-Host;throw 'RESET_SCRIPT_PARSE_FAILED'}
           $s=Get-Content $p -Raw
-          foreach($x in @('BusType -eq ''USB''','000000123ADC','IsBoot','IsSystem','clean','Initialize-Disk','PartitionStyle -ne ''GPT''','ap.Count -ne 0')){if($s -notlike ('*'+$x+'*')){throw "MISSING_GUARD $x"}}
+          foreach($x in @('BusType -eq ''USB''','000000123ADC','IsBoot','IsSystem','clean','Initialize-Disk','PartitionStyle -ne ''GPT''','ap.Count -ne 1')){if($s -notlike ('*'+$x+'*')){throw "MISSING_GUARD $x"}}
           if($s -match 'select disk 1'){throw 'HARDCODED_DISK_NUMBER'}
           Write-Host 'RESET_SCRIPT_POWERSHELL_51_PARSE=PASS'
           Write-Host 'RESET_SCRIPT_STATIC_SAFETY_GUARDS=PASS'
@@ -58,12 +58,12 @@ jobs:
           Start-Sleep 2
           $d=Get-Disk -Number $n
           $p=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition|Where-Object{[int]$_.DiskNumber -eq $n})
-          if($d.PartitionStyle -ne 'GPT' -or $p.Count -ne 0){
+          if($d.PartitionStyle -ne 'GPT' -or $p.Count -ne 1 -or ([string]$p[0].GptType).Trim('{}').ToLowerInvariant() -ne 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -or -not $p[0].IsHidden){
             $d|Format-List *|Out-String|Write-Host
             $p|Format-List *|Out-String|Write-Host
             throw "EMPTY_GPT_ASSERTION_FAILED style=$($d.PartitionStyle) count=$($p.Count)"
           }
-          Write-Host "VHD_EMPTY_GPT_RESET=PASS disk=$n partitions=0"
+          Write-Host "VHD_EMPTY_GPT_RESET=PASS disk=$n MSR-only"
           $x=Join-Path $env:RUNNER_TEMP 'detach.txt'
           @"
           select vdisk file="$v"
