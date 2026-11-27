@@ -53,7 +53,7 @@ jobs:
           & diskpart.exe /s $r
           if($LASTEXITCODE -ne 0){throw 'VHD_CLEAN_FAILED'}
           Update-HostStorageCache
-          Initialize-Disk -Number $n -PartitionStyle GPT -ErrorAction Stop | Out-Null
+          Initialize-Disk -Number $n -PartitionStyle GPT -Confirm:$false -ErrorAction Stop | Out-Null
           Update-HostStorageCache
           Start-Sleep 2
           $d=Get-Disk -Number $n
