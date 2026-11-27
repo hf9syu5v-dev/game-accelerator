@@ -80,7 +80,7 @@ function Test-EmptyGpt($Disk,[object[]]$Partitions) {
 function Get-EspVolumeInfo([string[]]$DiskPartOutput) {
     $found = @()
     foreach ($line in @($DiskPartOutput)) {
-        if ([string]$line -match '(?i)^\s*\*?\s*(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') {
+        if ([string]$line -match '(?i)(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') {
             $found += [pscustomobject]@{Number=[int]$Matches[1];Letter=$Matches[2].ToUpperInvariant()}
         }
     }
