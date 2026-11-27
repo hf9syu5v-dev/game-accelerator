@@ -155,7 +155,8 @@ print("UTBMAP_PORTS=11")
 print("SMBIOS_PLACEHOLDERS_RETAINED=YES")
 '@
     [IO.File]::WriteAllText($HelperPath,$code,[Text.Encoding]::ASCII)
-    $mapPath = Join-Path (Split-Path (Split-Path $ConfigPath -Parent) -Parent) 'Kexts\UTBMap.kext\Contents\Info.plist'
+    $mapPath = Join-Path (Split-Path $ConfigPath -Parent) 'Kexts\UTBMap.kext\Contents\Info.plist'
+    if (!(Test-Path -LiteralPath $mapPath -PathType Leaf)) { Stop-Build "UTBMAP_INFO_PLIST_MISSING=$mapPath" }
     & $Python @PythonArgs $HelperPath $ConfigPath $mapPath
     if ($LASTEXITCODE -ne 0) { Stop-Build "EFI_CONFIG_PATCH_FAILED=$LASTEXITCODE" }
 }
