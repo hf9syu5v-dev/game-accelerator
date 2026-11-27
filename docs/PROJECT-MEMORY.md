@@ -431,3 +431,15 @@
 - CI Run 46081553814 completed/success，链接：https://github.com/hf9syu5v-dev/game-accelerator/actions/runs/46081553814。Windows Server 2022 / Windows PowerShell 5.1日志确认R7_POWERSHELL_51_PARSE=PASS、R7_SELFTEST=PASS、R7_STATIC_SAFETY_AUDIT=PASS、R7_EXISTING_ESP_F_DRIVE_ACCESS_AND_PRESERVATION=PASS。CI在一次性VHD上实际验证预建ESP的F:卷访问、文件写入及盘符保留；不是用户实体USB测试，也不是目标机实机启动测试。
 - r7最终脚本从CI artifact 15237592109精确提取到 /mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB-r7.ps1；大小25967字节，SHA-256 e562610e649cb30c923b599bf3d1e2c2b01d5c5348e352dbd9712ac0a5a159cc，与Windows CI的R7_SHA256完全一致。Artifact ZIP SHA-256 b1b6625ff0632718938e63891db403a3547eb09bbf1cf2050ec2e2559a7c8c1e。
 - 当前恢复点：向用户提供r7真实下载文件和独立执行命令（管理员Windows PowerShell 5.1）。用户不再需要输入确认短语。脚本将重新核验目标USB和F: ESP，再复制EFI/Recovery并校验SHA，写入USB-BUILD-REPORT.txt。用户运行后回传完整输出。EFI02 SMBIOS占位符仍保留，正式安装macOS前必须处理。严禁把CI通过说成实体USB制作成功或目标机实机启动成功。
+
+
+## 41. 2026-11-28 临时测试SMBIOS写入脚本已完成Windows CI验证
+- 用户明确说明：本次只需要临时测试三码，macOS安装完成后由用户自行更换正式三码。因此此次允许将历史记录中的临时测试Serial/MLB/UUID写入EFI，但不得将其作为正式三码或公开写入项目记忆。
+- 新增通用脚本源码：`tools/Write-B460M-SMBIOS-Test-To-USB.ps1`；新增CI：`.github/workflows/test-b460m-smbios-usb-patcher.yml`。Git提交：`1a66a814692b4300ffafb93db33c7998c3d15469`。
+- GitHub Actions Run `46082832807` completed/success：https://github.com/hf9syu5v-dev/game-accelerator/actions/runs/46082832807。Windows Server 2022 / Windows PowerShell 5.1日志确认：`SMBIOS_POWERSHELL_51_PARSE=PASS`、`SMBIOS_PATCH_SELFTEST=PASS`、`POWERSHELL_51_SELFTEST=PASS`、`SMBIOS_PRODUCTION_SELFTEST=PASS`、`SMBIOS_STATIC_SAFETY_AUDIT=PASS`。生产Python plist补丁函数经过实际临时plist测试；覆盖拒绝、只修改三项、ROM不变、11端口映射和Sequoia启动配置保留均通过。
+- CI通用源码artifact ID `15237965882`，artifact ZIP SHA-256 `4e99a72663df7e5f6efe11dcf069289bae0b0484697e5a66c795c4087ac21909`。Windows CI计算的通用脚本SHA-256 `0f61dcd4955e81f0b50ae2f79cfd98240f9f990122c9aa6c3aea8f3cb7c2c599`。
+- 最终本地交付脚本由该CI artifact精确提取后，仅在本地填入临时测试标识及目标USB设备序列号；未将这些私有标识提交到公开仓库。最终本地文件：`/mnt/data/Write-B460M-SMBIOS-Test-To-USB.ps1`，10,815 bytes，SHA-256 `8998cd06907513ff77c9b0d0e99f748c1b8dedc4355ef3d4b17d9d1932981cae`。本地Python plist patch self-test再次通过。文件保留UTF-8 BOM，目标Windows PowerShell 5.1。
+- 脚本执行时只接受此前确认的Samsung USB型号/序列号/USB总线及容量范围，并交叉核对Win32_DiskDrive物理索引；要求目标盘仅有一个预建GPT EFI System Partition、F:、FAT32、卷标OC-SEQUOIA。写入前重新枚举磁盘与分区。辅助电脑Disk 0系统盘不会匹配目标设备。脚本不含清盘、分区、格式化或删除分区命令。
+- 写入前备份 `F:\EFI\OC\config.plist`；只改 `PlatformInfo.Generic.SystemSerialNumber`、`MLB`、`SystemUUID` 三项。保留 `SystemProductName=iMac20,1`、ROM、UTBMap 11端口、XhciPortLimit=False、Timeout=0、ScanPolicy=0x200703。只接受当前三个字段仍为占位值；任何字段不是预期占位值即停止。写入通过Python plistlib原子替换并回读验证；失败从备份恢复。
+- CI通过表示Windows PowerShell 5.1语法、生产补丁函数自测和静态安全审计通过；不代表已在用户实体USB上运行，也不代表目标主机实机启动成功。
+- 当前恢复点：将本地脚本按两步法交付用户：先下载PS1，再单独执行。执行命令需在管理员Windows PowerShell 5.1中运行。用户回传完整输出后，再只读核对config.plist三个字段和备份文件；不要要求用户重新分区或格式化。
