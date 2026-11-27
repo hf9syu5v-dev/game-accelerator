@@ -29,3 +29,32 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/Reset-B460M-Samsung-USB-EmptyGPT-r2.ps1 -SelfTest
           if($LASTEXITCODE -ne 0){throw 'RESET_R2_SELFTEST_FAILED'}
           Write-Host 'RESET_R2_IDENTITY_SELFTEST=PASS'
+      - name: Exercise empty-GPT transition on disposable VHD
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $before=@(Get-Disk | Select-Object -ExpandProperty Number)
+          $vhd=Join-Path $env:TEMP 'b460m-empty-gpt-r2-test.vhdx'
+          $dp=Join-Path $env:TEMP 'b460m-empty-gpt-r2-test.txt'
+          @("create vdisk file=`"$vhd`" maximum=256 type=expandable",'select vdisk file="' + $vhd + '"','attach vdisk') | Set-Content -LiteralPath $dp -Encoding ASCII
+          $o=diskpart.exe /s $dp 2>&1; $o | Write-Host
+          if($LASTEXITCODE -ne 0){throw 'VHD_ATTACH_FAILED'}
+          Update-HostStorageCache
+          $new=@(Get-Disk | Where-Object { $before -notcontains $_.Number })
+          if($new.Count -ne 1){throw "EXPECTED_ONE_TEST_VHD_FOUND_$($new.Count)"}
+          $n=[int]$new[0].Number
+          Clear-Disk -Number $n -RemoveData -RemoveOEM -Confirm:$false
+          Initialize-Disk -Number $n -PartitionStyle GPT -Confirm:$false | Out-Null
+          Start-Sleep -Seconds 2
+          $p=@(Get-CimInstance -Namespace root/Microsoft/Windows/Storage -ClassName MSFT_Partition | Where-Object DiskNumber -eq $n)
+          if($p.Count -ne 1 -or ([string]$p[0].GptType).Trim('{}').ToLowerInvariant() -ne 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -or -not $p[0].IsHidden){throw 'EXPECTED_WINDOWS_HIDDEN_MSR_NOT_FOUND'}
+          Remove-Partition -InputObject $p[0] -Confirm:$false
+          Start-Sleep -Seconds 2
+          $final=Get-Disk -Number $n
+          $remaining=@(Get-CimInstance -Namespace root/Microsoft/Windows/Storage -ClassName MSFT_Partition | Where-Object DiskNumber -eq $n)
+          if($final.PartitionStyle -ne 'GPT' -or $remaining.Count -ne 0){throw 'VHD_EMPTY_GPT_VERIFICATION_FAILED'}
+          Write-Host 'DISPOSABLE_VHD_GPT_ZERO_PARTITIONS=PASS'
+          Write-Host "TEST_VHD_DISK_NUMBER=$n"
+          @('select vdisk file="' + $vhd + '"','detach vdisk','exit') | Set-Content -LiteralPath $dp -Encoding ASCII
+          diskpart.exe /s $dp | Write-Host
+          Remove-Item $dp,$vhd -Force -ErrorAction SilentlyContinue
