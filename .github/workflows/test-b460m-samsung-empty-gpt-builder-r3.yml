@@ -121,6 +121,14 @@ jobs:
           '@ | Set-Content -LiteralPath $helper -Encoding ASCII
           & python $helper (Join-Path $root 'OC\config.plist') (Join-Path $root 'OC\Kexts\UTBMap.kext\Contents\Info.plist')
           if ($LASTEXITCODE -ne 0) { throw 'EFI02_CONFIG_PATCH_TEST_FAILED' }
+          # Exercise the exact PowerShell helper called by the production Builder,
+          # not only a duplicate Python snippet. This catches path-resolution regressions.
+          . 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r3.ps1' -SelfTest
+          $actualConfig = Join-Path $root 'OC\config.plist'
+          $actualHelper = Join-Path $dir 'invoke-builder-config-patch.py'
+          Invoke-EFIConfigPatch 'python' @() $actualConfig $actualHelper
+          if ($LASTEXITCODE -ne 0) { throw 'PRODUCTION_BUILDER_CONFIG_PATCH_HELPER_FAILED' }
+          Write-Host 'PRODUCTION_BUILDER_UTBMAP_PATH_RESOLUTION=PASS'
           $ocDir = Join-Path $dir 'OpenCoreTools'
           Expand-Archive -LiteralPath $ocZip -DestinationPath $ocDir -Force
           $macrec = @(Get-ChildItem -LiteralPath $ocDir -Filter 'macrecovery.py' -File -Recurse)
