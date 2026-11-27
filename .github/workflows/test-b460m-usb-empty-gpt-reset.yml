@@ -58,12 +58,17 @@ jobs:
           Start-Sleep 2
           $d=Get-Disk -Number $n
           $p=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition|Where-Object{[int]$_.DiskNumber -eq $n})
-          if($d.PartitionStyle -ne 'GPT' -or $p.Count -ne 1 -or ([string]$p[0].GptType).Trim('{}').ToLowerInvariant() -ne 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -or -not $p[0].IsHidden){
+          if($d.PartitionStyle -ne 'GPT' -or $p.Count -ne 1 -or ([string]$p[0].GptType).Trim('{}').ToLowerInvariant() -ne 'e3c9e316-0b5c-4db8-817d-f92df00215ae' -or -not $p[0].IsHidden){throw 'EXPECTED_MSR_AFTER_INITIALIZE'}
+          Remove-Partition -InputObject $p[0] -Confirm:$false -ErrorAction Stop
+          Update-HostStorageCache
+          Start-Sleep 2
+          $p=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition|Where-Object{[int]$_.DiskNumber -eq $n})
+          if($d.PartitionStyle -ne 'GPT' -or $p.Count -ne 0){
             $d|Format-List *|Out-String|Write-Host
             $p|Format-List *|Out-String|Write-Host
             throw "EMPTY_GPT_ASSERTION_FAILED style=$($d.PartitionStyle) count=$($p.Count)"
           }
-          Write-Host "VHD_EMPTY_GPT_RESET=PASS disk=$n MSR-only"
+          Write-Host "VHD_EMPTY_GPT_RESET=PASS disk=$n partitions=0 after removing Windows-created MSR"
           $x=Join-Path $env:RUNNER_TEMP 'detach.txt'
           @"
           select vdisk file="$v"
