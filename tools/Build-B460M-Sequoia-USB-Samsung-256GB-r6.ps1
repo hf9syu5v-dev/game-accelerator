@@ -198,6 +198,8 @@ function Invoke-BuilderSelfTest {
     $enInfo = Get-EspVolumeInfo @('  Volume  4   H   OC-SEQUOIA   FAT32   Partition  15 GB  Healthy Hidden')
     if (($null -eq $enInfo) -or ($enInfo.Number -ne 4) -or ($enInfo.Letter -ne 'H')) { throw 'SELFTEST_ENGLISH_VOLUME_PARSE_FAILED' }
     if (Get-EspVolumeInfo @('  Volume  3   H   OTHER       FAT32   Partition  15 GB  Healthy')) { throw 'SELFTEST_WRONG_LABEL_ACCEPTED' }
+    $fInfo = Get-EspVolumeInfo @('  Volume  5   F   OC-SEQUOIA   FAT32   Partition  15 GB  Healthy')
+    if (($null -eq $fInfo) -or ($fInfo.Number -ne 5) -or ($fInfo.Letter -ne 'F')) { throw 'SELFTEST_F_DRIVE_PARSE_FAILED' }
     $mbr=$goodDisk.PSObject.Copy();$mbr.PartitionStyle='MBR'
     if (Test-EmptyGpt $mbr @()) { throw 'SELFTEST_MBR_ACCEPTED' }
     Write-Host 'BUILDER_SELFTEST=PASS' -ForegroundColor Green
