@@ -232,3 +232,15 @@
 - 当前运行容器中未发现/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1和/mnt/data/B460M-Baseline-EFI-02.zip；此前会话提及的本地sandbox文件不能直接视为本轮仍存在。重新交付前必须重新生成文件并核验SHA及实际内容。
 - 最新用户提供的PowerShell错误为：在Disk 1空分区状态查询时，Get-Partition抛出“找不到任何DiskNumber属性等于1的MSFT_Partition对象”；脚本随即BUILD_STOPPED。依据日志顺序，失败发生在写盘前，未执行DiskPart clean/格式化/分区操作。Disk 1仍是辅助电脑上用户确认的USB Samsung SSD 860 EVO（约232.89GiB/标称250GB）安装介质；Disk 0辅助电脑Windows系统盘永久保护；E:/F:及其保护目录不触碰。
 - 本轮下一步：重新取得EFI02 artifact并重新构建可审计的本地脚本；将完整脚本纳入Windows PowerShell 5.1 Parser测试和隔离模拟测试（不得提交真实SMBIOS、真实设备序列号或私有标识）；检查所有路径/依赖/异常分支和写盘前后保护机制；尽可能在GitHub Actions Windows runner执行完整脚本的非破坏性测试。完整脚本未通过前不向用户发布可执行脚本、不要求用户运行、不对USB做任何写入。
+
+
+## 21. 2026-11-28 USB制作脚本重建与Windows虚拟磁盘测试进展
+- 本轮重新从Actions artifact 15138240431下载EFI02外层artifact；实际SHA-256为e28d7fc6aa3096d01266b94db15255de62aad9c7e3ff39bc7b44f07cff409bcc，与此前记录一致。并下载Run42 artifact 15009119500，确认其中包含用户此前批准的临时测试SMBIOS配置；实际值不写入本记忆和公开仓库。
+- 重新生成本地专用EFI包/mnt/data/B460M-Baseline-EFI-02-Sequoia-USB.zip，SHA-256 e5d84d73bf5f8392fdbf0a5b954081b930098f357e3615a445cdc84d6e629680，包含60个EFI文件。仅在本地把Run42中用户批准的临时测试SMBIOS字段复制到EFI02 config.plist；ROM为6字节Data；XhciPortLimit=False、Misc.Boot.Timeout=0、Misc.Security.ScanPolicy=0x200703；UTBMap.kext Enabled且保留11端口映射。结构检查通过。此ZIP含临时SMBIOS，不得提交到公开GitHub。
+- 重建本地PowerShell 5.1制作脚本/mnt/data/Build-B460M-Sequoia-USB-Samsung-256GB.ps1；当前本地文件SHA-256为379187decf5a196709e62baef04cdb289cb42efbdecc89b8c9f0841f96bc15c5。脚本不硬编码磁盘编号或设备序列号；按Samsung SSD 860 EVO型号前缀、USB BusType、225–240GiB容量筛选候选盘，再要求用户输入精确序列号并以Win32_DiskDrive交叉验证；IsBoot/IsSystem、Offline/ReadOnly保护；空盘检查使用MSFT_Partition CIM查询；E:/F:排除；盘符仅从G:–Z:动态选择；DiskPart clean在包含序列号的精确确认语句之后；下载Recovery、ocvalidate、chunklist及复制后SHA校验均有检查。
+- 本地静态检查通过：脚本存在、括号/引号结构平衡、CIM空盘检测、设备型号/序列号输入、系统盘保护、E/F保护、确认语句、ocvalidate调用、Apple chunklist验证和逐文件哈希检查；EFI ZIP完整性、60文件结构、关键路径、SMBIOS非占位、ROM Data长度、Quirks/ScanPolicy/Timeout及UTBMap均通过Python结构检查。
+- 为测试完整脚本，公开仓库新增了Windows Server 2022 / Windows PowerShell 5.1 workflow：.github/workflows/test-b460m-sequoia-usb-builder.yml，并保存本地脚本压缩fixture（不含真实磁盘序列号和SMBIOS值）。Run 46064574122成功，证明还原后的完整脚本通过Windows PowerShell 5.1 Parser，Get-TargetPartitions空/非空/CIM异常隔离测试通过。Run 46064508493为workflow中$LASTEXITCODE判定错误导致的测试失败，后续已修复为检查$?。
+- 随后增加了临时VHDX测试，目的是在GitHub Windows runner虚拟机中实际执行DiskPart的GPT + EFI System Partition + FAT32/OC-SEQUOIA创建流程，不接触runner系统盘或用户磁盘。Run 46064773954、46064930280、46065104824、46065181758、46065295406、46065500493均未通过最终VHD分区验证；日志显示DiskPart成功创建/附加VHD、clean、convert gpt、create partition efi、format FAT32和assign drive letter，但Get-Partition -DriveLetter对EFI分区未返回对象。改用MSFT_Partition CIM和Win32_LogicalDisk后，当前日志显示分区查询返回4条记录但没有匹配到目标盘符；虚拟磁盘编号/查询范围仍需进一步核实，不能将此测试标为PASS。
+- 因此目前可以确认：完整脚本在Windows PowerShell 5.1 Parser测试通过；Get-TargetPartitions模拟回归通过；DiskPart在CI临时VHD上执行GPT/EFI/FAT32命令成功，但VHD分区身份/ESP类型复核尚未通过。完整脚本端到端虚拟磁盘验证仍未通过，禁止向用户发布该脚本作为可执行正式版本，禁止用户再次运行，也不得对辅助电脑Disk 1进行任何手动写盘操作。
+- 本地脚本和EFI ZIP仅在当前容器路径存在；正式交付前须重新核验文件存在、哈希、PowerShell 5.1 Parser、VHDX ESP验证和GitHub Actions全绿。不得声称目标USB已制作或目标电脑已启动。
+- 关于“继续黑苹果项目分析 (37)”：当前环境仍未获得该窗口正文/导出；本轮仅追加本窗口和可验证GitHub/CI记录，不编造第37窗口内容。
