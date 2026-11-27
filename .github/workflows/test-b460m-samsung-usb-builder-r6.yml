@@ -42,6 +42,7 @@ jobs:
           if ($s -match '(?m)^\\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\b') { throw 'R6_UNEXPECTED_DESTRUCTIVE_CMDLET' }
           if ($s -match 'Get-Partition\\s+-DriveLetter\\s+F') { throw 'R6_MUST_ALLOW_TARGET_F_DRIVE' }
           if ($s -match 'mountvol\\.exe') { throw 'R6_MUST_PRESERVE_F_DRIVE_LETTER' }
+          if ($s -match '(?i)create partition efi|format fs=fat32') { throw 'R6_MUST_NOT_PARTITION_OR_FORMAT' }
           if (-not $s.Contains('expected exactly one pre-created 15-17GB EFI partition')) { throw 'R6_PREPARED_ESP_REQUIRED' }
           Write-Host 'R6_STATIC_SAFETY_AUDIT=PASS'
       - name: Exercise existing ESP reuse and preserve F on disposable VHD
