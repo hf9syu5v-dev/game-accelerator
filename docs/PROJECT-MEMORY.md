@@ -313,3 +313,13 @@
 - 已生成只读版本检查脚本 `/mnt/data/Check-B460M-Builder-Version.ps1`，SHA-256 `b3e3a0d4d763fcaef408964b4562131afb74e47a8d848e48ea5de719555fe7b7`，1,941 bytes。该脚本只扫描用户Downloads目录中匹配的builder脚本，列出文件名、完整路径、长度、修改时间、SHA256，并判断是否包含新版三分区保护逻辑或旧空盘检查文字；不读取磁盘分区、不改文件、不写磁盘。
 - 已将版本检查脚本提交到 `tools/Check-B460M-Builder-Version.ps1`（提交 `3180f58b1a82fc343d5a354b932c1b2edbfe8252`），并将其PowerShell 5.1 Parser步骤加入 `.github/workflows/test-b460m-sequoia-usb-builder.yml`（提交 `0c3597d9aa7bc35c7a24bb3ffa9fc8c99d79f18c`）。GitHub Actions Run `46070639797` 已成功，链接 https://github.com/hf9syu5v-dev/game-accelerator/actions/runs/46070639797；该次新增 `VERSION_CHECKER_POWERSHELL_51_PARSE=PASS`。
 - 当前下一步：先交付只读版本检查PS1并让用户运行，检查Downloads目录中所有同名前缀文件的SHA256和标记。期望正确构建器SHA256为 `415ce293bcc536a1bef3742460b62e5f73bde56564b336b1fc18ddd807277fd6`。若没有任何文件匹配该哈希，要求用户重新下载正确PS1并确保实际执行的路径/文件名；在确认匹配前禁止再次运行任何构建或清盘脚本。USB现有三个分区状态维持不变。
+
+
+## 29. 2026-11-28 用户决定恢复空GPT盘并新增清盘脚本
+- 用户明确改变操作方案：先由用户侧脚本将已确认的Samsung SSD 860 EVO USB安装盘恢复为“空GPT盘”，再继续原构建流程。该决定取代上一节优先接受ESP+MSR+Basic/E:三分区布局的方案。
+- 目标设备仍是辅助电脑上此前已交叉确认的Samsung SSD 860 EVO USB，标称250GB、约232.89GiB；型号、USB BusType、容量和序列号必须在脚本每次运行时重新核验，动态发现磁盘号，不硬编码编号。辅助电脑Windows系统盘、任何其他磁盘及F:均保护。目标USB上的E:数据在本次授权范围内会被清除。
+- 新增脚本 tools/Reset-B460M-Samsung-USB-EmptyGPT.ps1，本地交付文件路径 /mnt/data/Reset-B460M-Samsung-USB-EmptyGPT.ps1。脚本执行前展示设备身份与当前分区数，必须输入精确确认语句才进行DiskPart clean；之后用Initialize-Disk创建GPT。Windows初始化GPT会自动建立隐藏MSR分区，因此脚本再明确删除该Windows自动创建的MSR，最终要求Get-Disk显示GPT且MSFT_Partition对该盘返回0个分区，才输出RESET_VERIFIED=PASS。若设备识别、CIM交叉核验、保护条件或最终状态不符，则停止。
+- 技术验证发现：仅DiskPart clean + convert gpt，以及仅Initialize-Disk -PartitionStyle GPT，在Windows Server 2022上都会留下一个隐藏MSR分区（GPT type e3c9e316-0b5c-4db8-817d-f92df00215ae，约16MiB）；因此不能把“只剩MSR”误报成严格零分区状态。最终方案是在初始化后识别并移除该隐藏MSR，再验证GPT零分区。
+- GitHub Actions workflow .github/workflows/test-b460m-usb-empty-gpt-reset.yml 最新Run 46071794970，提交 6e8cd5691b239222b44a5edcd15cf196ef147389，结论success。Windows Server 2022 / Windows PowerShell 5.1日志确认脚本Parser及安全静态检查通过，并在runner新建的一次性VHD上完成clean、Initialize-Disk GPT、识别/删除Windows创建的隐藏MSR，最终验证GPT且分区数为0。测试只操作runner临时VHD，不是用户实体USB。
+- 本地PS1当前SHA-256：d18e6072245e1b5ff1a60ce7cf2e5b0775a7558e102e9d4c13e2410a2881d994，Git blob SHA与仓库文件一致（2a47dbedffc5358e3cd9ed73d980da3dc96302c9）。本地环境没有Windows PowerShell解释器；Windows PowerShell 5.1 Parser与VHD端到端测试由上述GitHub Actions完成。尚未对辅助电脑实体USB执行清盘，不能声称实体盘已变更。
+- 重要后续：当前既有USB builder历史版本的空盘检查逻辑曾以“零分区”作为前置条件；本次Reset脚本最终状态满足该条件，但交付前仍须确认builder当前下载版本、SHA及其目标盘识别条件与本次Reset脚本一致。用户运行Reset脚本前，必须先下载新PS1，再独立执行；不要要求复制代码。Reset完成后回传完整输出，再继续构建器流程。
