@@ -33,7 +33,7 @@ try {
  @("select disk $n",'clean','exit')|Set-Content -LiteralPath $dp -Encoding ASCII
  try{$o=& diskpart.exe /s $dp 2>&1;$ec=$LASTEXITCODE;$o|ForEach-Object{Write-Host $_};if($ec -ne 0){Stop-Safely "DiskPart exit $ec. Inspect disk before retry."}}finally{Remove-Item $dp -Force -ErrorAction SilentlyContinue}
  Update-HostStorageCache -ErrorAction SilentlyContinue
- Initialize-Disk -Number $n -PartitionStyle GPT -ErrorAction Stop | Out-Null
+ Initialize-Disk -Number $n -PartitionStyle GPT -Confirm:$false -ErrorAction Stop | Out-Null
  Update-HostStorageCache -ErrorAction SilentlyContinue; Start-Sleep 2
  $after=Get-Disk -Number $n -ErrorAction Stop
  $ap=@(Get-CimInstance -Namespace 'root/Microsoft/Windows/Storage' -ClassName MSFT_Partition -ErrorAction Stop|Where-Object{[int]$_.DiskNumber -eq $n})
