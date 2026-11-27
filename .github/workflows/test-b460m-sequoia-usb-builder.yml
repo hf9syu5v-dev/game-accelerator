@@ -29,6 +29,40 @@ jobs:
           $scriptPath = Join-Path $env:RUNNER_TEMP 'Build-B460M-Sequoia-USB-Samsung-256GB.ps1'
           [System.IO.File]::WriteAllBytes($scriptPath,$output.ToArray())
           $input.Dispose(); $gzip.Dispose(); $output.Dispose()
+          $builderText = Get-Content -LiteralPath $scriptPath -Raw
+          $oldVhd = @'
+        $partition = Get-Partition -DriveLetter $letter -ErrorAction Stop
+        $volume = Get-Volume -DriveLetter $letter -ErrorAction Stop
+        if ($partition.DiskNumber -ne $vhdDiskNumber -or ([string]$partition.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or $volume.FileSystem -ne 'FAT32' -or $volume.FileSystemLabel -ne 'OC-SEQUOIA') {
+            throw 'VHD_SELFTEST_LAYOUT_ASSERTION_FAILED'
+        }
+'@
+          $newVhd = @'
+        $vhdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$vhdDiskNumber))
+        $partition = @($vhdPartitions | Where-Object { [string]$_.DriveLetter -eq $letter })
+        $volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $letter) -ErrorAction Stop
+        if ($vhdPartitions.Count -ne 1 -or $partition.Count -ne 1 -or ([string]$partition[0].GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or !$volume -or $volume.FileSystem -ne 'FAT32' -or $volume.VolumeName -ne 'OC-SEQUOIA') {
+            throw 'VHD_SELFTEST_LAYOUT_ASSERTION_FAILED'
+        }
+'@
+          $oldReal = @'
+    $volume = Get-Volume -DriveLetter $availableLetter -ErrorAction Stop
+    $partition = Get-Partition -DriveLetter $availableLetter -ErrorAction Stop
+    if ($partition.DiskNumber -ne $targetAgain.Number -or ([string]$partition.GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or $volume.FileSystem -ne 'FAT32' -or $volume.FileSystemLabel -ne 'OC-SEQUOIA') {
+        throw 'FORMATTED_USB_LAYOUT_VERIFICATION_FAILED'
+    }
+'@
+          $newReal = @'
+    $createdPartitions = @(Get-TargetPartitions -DiskNumber ([uint32]$targetAgain.Number))
+    $espMatches = @($createdPartitions | Where-Object { [string]$_.DriveLetter -eq $availableLetter })
+    $volume = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $availableLetter) -ErrorAction Stop
+    if ($createdPartitions.Count -ne 1 -or $espMatches.Count -ne 1 -or ([string]$espMatches[0].GptType).Trim('{}').ToLowerInvariant() -ne $EspGuid -or !$volume -or $volume.FileSystem -ne 'FAT32' -or $volume.VolumeName -ne 'OC-SEQUOIA') {
+        throw 'FORMATTED_USB_LAYOUT_VERIFICATION_FAILED'
+    }
+'@
+          if (!$builderText.Contains($oldVhd) -or !$builderText.Contains($oldReal)) { throw 'BUILDER_FIXTURE_PATCH_ANCHOR_MISSING' }
+          $builderText = $builderText.Replace($oldVhd,$newVhd).Replace($oldReal,$newReal).Replace('Write-Verbose $_','Write-Host $_')
+          [System.IO.File]::WriteAllText($scriptPath,$builderText,(New-Object System.Text.UTF8Encoding($false)))
           if (!(Test-Path $scriptPath)) { throw 'BUILDER_FIXTURE_RESTORE_FAILED' }
           Write-Host "BUILDER_FIXTURE_RESTORED=$scriptPath"
       - name: Parse complete builder with Windows PowerShell 5.1
