@@ -35,11 +35,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $s = Get-Content 'tools/Build-B460M-Sequoia-USB-Samsung-256GB-r4.ps1' -Raw
-          foreach ($x in @('000000123ADC','USBSTOR\\','PHYSICALDRIVE','IsBoot','IsSystem','BUILD SEQUOIA INSTALLER ON SAMSUNG USB','Get-EspVolumeInfo','E:','F:','XhciPortLimit','0x200703')) {
+          foreach ($x in @('000000123ADC','USBSTOR','PHYSICALDRIVE','IsBoot','IsSystem','BUILD SEQUOIA INSTALLER ON SAMSUNG USB','Get-EspVolumeInfo','E:','F:','XhciPortLimit','0x200703')) {
             if (-not $s.Contains($x)) { throw "R4_REQUIRED_GUARD_MISSING=$x" }
           }
-          if ($s -match "(?m)^\\s*'clean'\\s*,?\\s*$") { throw 'R4_MUST_NOT_DISKPART_CLEAN' }
-          if ($s -match '(?m)^\\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\\b') { throw 'R4_UNEXPECTED_DESTRUCTIVE_CMDLET' }
+          if ($s -match "(?m)^\s*'clean'\s*,?\s*$") { throw 'R4_MUST_NOT_DISKPART_CLEAN' }
+          if ($s -match '(?m)^\s*(Clear-Disk|Format-Volume|Initialize-Disk|Remove-Partition)\b') { throw 'R4_UNEXPECTED_DESTRUCTIVE_CMDLET' }
           Write-Host 'R4_STATIC_SAFETY_AUDIT=PASS'
       - name: Exercise existing ESP detection and copy access on disposable VHD
         shell: powershell
@@ -70,7 +70,7 @@ jobs:
           @("select disk $($d.Number)",'create partition efi size=16000','format fs=fat32 quick label=OC-SEQUOIA',"assign letter=$letter",'select partition 1','detail partition','exit') | Set-Content -LiteralPath $dp -Encoding ASCII
           $out = @(& diskpart.exe /s $dp 2>&1 | ForEach-Object { [string]$_ })
           if ($LASTEXITCODE -ne 0) { throw 'R4_VHD_ESP_CREATE_FAILED' }
-          $line = $out | Where-Object { $_ -match '(?i)^\\s*(?:卷|Volume)\\s+\\d+\\s+[A-Z]\\s+OC-SEQUOIA\\s+FAT32\\b' }
+          $line = $out | Where-Object { $_ -match '(?i)^\s*(?:卷|Volume)\s+\\d+\s+[A-Z]\s+OC-SEQUOIA\s+FAT32\b' }
           if (@($line).Count -ne 1) { $out | Write-Host; throw 'R4_VHD_DETAIL_VOLUME_NOT_FOUND' }
           if ($line -notmatch '(?i)^\s*(?:卷|Volume)\s+(\d+)\s+([A-Z])\s+OC-SEQUOIA\s+FAT32\b') { throw 'R4_VHD_DETAIL_VOLUME_PARSE_FAILED' }
           $volumeNumber = $Matches[1]
